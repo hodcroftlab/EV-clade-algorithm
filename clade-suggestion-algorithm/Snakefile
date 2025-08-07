@@ -24,8 +24,12 @@ GFF_FILE = f"../seasonal_{LINEAGE[0]}/config/genome_annotation.gff3"
 # ├── clade-suggestion-algorithm/
 # │   ├── auspice/
 # │   ├── scripts/
-# │   │   ├── calculate_optimal_scales.py
 # │   │   ├── add_new_clades.py
+# │   │   ├── calculate_optimal_scales.py
+# │   │   ├── construct_tsv.py
+# │   │   ├── extract_yml_from_json.py
+# │   │   ├── generate_markdown_summary.py
+# │   │   ├── visualize_clades.R
 # │   ├── Snakefile
 # │   ├── README.md
 
@@ -46,6 +50,8 @@ def load_config(lineage, config_file="suggestion_params.json"):
 rule all:
     input:
         expand("auspice/suggested_{lineage}.json",
+               lineage=LINEAGE),
+        expand("../seasonal_{lineage}/clades",
                lineage=LINEAGE),
 
 rule fetch:
@@ -92,7 +98,7 @@ rule suggest_new_clades:
         clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.lineage) else "", # flu has different key for clades
         
         ## params for the plots
-        plots = "True",  # "True" to generate plots
+        plots = "False",  # "True" to generate plots
         cutoff = [round(x, 1) for x in np.arange(0.5, 1.5, 0.1)],
         div_add = [round(x, 2) for x in np.arange(0.5, 1.2, 0.2)],
         min_size = [round(x, 1) for x in np.arange(10, 40, 10)],
@@ -131,51 +137,55 @@ rule visualization:
     input:
         clades = "../seasonal_{lineage}/new-clades_all.tsv",
         tree = rules.suggest_new_clades.output.tree,
-    params:
-        dir = "../seasonal_{lineage}/plots/",
+        d = directory("../seasonal_{lineage}/plots/")
     output:
         tiff = "../seasonal_{lineage}/plots/violin_plots.tiff"
     shell:
         """
-        Rscript ../helper-scripts/visualize_clades.R {input.clades} {input.tree} {params.dir}
+        Rscript visualize_clades.R {input.clades} {input.tree} {input.d}
         """
 
 
 rule extract_clade_ymls:
     input:
-        json = "auspice/suggested_D68.json"
+        json = rules.suggest_new_clades.output.tree,
     output:
-        subclades = directory("../seasonal_D68/subclades"),
-        clades = directory("../seasonal_D68/clades"),
+        clades = directory("../seasonal_{lineage}/clades"),
     shell:
         """
-        python3 ../helper-scripts/extract_yml_from_json.py \
+        python3 extract_yml_from_json.py \
             --json {input.json} \
-            --subclade-outdir {output.subclades} --clade-outdir {output.clades}
+            --outdir {output.clades}
         """
 
 # generate the markdown summary of the clade definitions
 rule summary:
     input:
-        expand("subclades/{file}", file=glob_wildcards("subclades/{file}").file)
+        expand("clades/{file}", file=glob_wildcards("clades/{file}").file),
+        clades = rules.extract_clade_ymls.output.clades,
     output:
-        "../seasonal_D68/.auto-generated/subclades_D68.md" #".auto-generated/subclades_D68.md"
+        md = "../seasonal_{lineage}/.auto-generated/clades_{lineage}.md", #".auto-generated/subclades_D68.md"
+        
     shell:
         """
-        cd ../seasonal_D68 && \
-        python3 "../helper-scripts/generate_markdown_summary.py" --input-dir subclades --lineage D68 --gene genome
+        python3 generate_markdown_summary.py \
+            --input-dir {input.clades} --lineage {wildcards.lineage} --file {output.md}
         """
 
 rule construct_tsv:
+    input:
+        directory("../seasonal_{lineage}/clades")
     output:
-        dir("../seasonal_D68/.auto-generated")
+        tsv = "../seasonal_{lineage}/.auto-generated/subclades.tsv",
+        ptsv = "../seasonal_{lineage}/.auto-generated/subclade-proposals.tsv",
+        clades = "../seasonal_{lineage}/.auto-generated/clades.tsv",
+        clades_long = "../seasonal_{lineage}/.auto-generated/clades-long.tsv"
     shell:
         """
-        cd ../seasonal_D68 && \
-        python3 ../helper-scripts/construct_tsv.py --input-dir subclades --output-tsv {output}/subclades.tsv
-        python ../helper-scripts/construct_tsv.py --input-dir subclades subclade-proposals --output-tsv {output}/subclade-proposals.tsv
-        python ../helper-scripts/construct_tsv.py --input-dir clades --aux-input-dir subclades --flat-output --use-short-name --output-tsv {output}/clades.tsv
-        python ../helper-scripts/construct_tsv.py --input-dir clades --aux-input-dir subclades --flat-output --output-tsv {output}/clades-long.tsv
+        python3 construct_tsv.py --input-dir {input} --output-tsv {output.tsv}
+        python3 construct_tsv.py --input-dir {input} subclade-proposals --output-tsv {output.ptsv}
+        python3 construct_tsv.py --input-dir {input} --aux-input-dir subclades --flat-output --use-short-name --output-tsv {output.clades}
+        python3 construct_tsv.py --input-dir {input} --aux-input-dir subclades --flat-output --output-tsv {output.clades_long}
         """
 
 rule clean:
@@ -186,6 +196,6 @@ rule clean:
         ../seasonal_D68/subclades/ \
         suggested_D68_clades.txt \
         seasonal_D68/subclades.tex \
-        auspice/original_D68.json
+        auspice/original_D68.json \
         auspice/suggested_D68.json
         """
