@@ -1,0 +1,29 @@
+# Byte-compiled files
+*.pyc
+*.pyo
+__pycache__/
+
+# Logs
+*.log
+.snakemake
+.Rhistory
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# results
+*/plots
+*.auto-generated
+
+# Ignore JSON output files
+*/auspice/*.json
+
+
+# Ignore genome annotation files
+*.gff3
+
+helper-scripts/
+
+
+*/config/optimal_scales.json

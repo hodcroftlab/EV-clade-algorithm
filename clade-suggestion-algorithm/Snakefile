@@ -1,0 +1,191 @@
+import numpy as np
+import json
+import os
+import ipdb
+
+# order: fetch > calculate_optimal_scales > suggest_new_clades
+# define config paths
+# what are the lineages?
+LINEAGE = ["D68"]  # Add more lineages as needed
+TREE_PATH = "../../nextclade_d68/results/auspice.json" # or TREE_PATH= None: use the URL from the config file
+# TREE_PATH= None  # ⬆
+GFF_FILE = f"../seasonal_{LINEAGE[0]}/config/genome_annotation.gff3"
+
+## please make sure the directory structure is as follows:
+# enterovirus-clade-nomenclature/
+# ├── seasonal_{lineage}/
+# │   ├── config/
+# │   │   ├── suggestion_params.json
+# │   │   ├── weights.json
+# │   │   ├── aliases.json
+# │   │   ├── genome_annotation.gff3
+# │   ├── CHANGELOG.md
+# │   ├── README.md
+# ├── clade-suggestion-algorithm/
+# │   ├── auspice/
+# │   ├── scripts/
+# │   │   ├── calculate_optimal_scales.py
+# │   │   ├── add_new_clades.py
+# │   ├── Snakefile
+# │   ├── README.md
+
+if not os.path.exists(GFF_FILE):
+    raise FileNotFoundError(f"GFF file not found: {GFF_FILE}")
+
+# ! adjust the Nexstrain tree.json path in suggestion_params.json
+# ! define some weights (e.g. BC, DE loop in VP1) in weights.json
+# ! define the current nomenclature in aliases.json
+# ! provide a genome annotation file in genome_annotation.gff3 -> or provide a list of proteins in suggestion_params.json
+
+def load_config(lineage, config_file="suggestion_params.json"):
+    """Load the JSON configuration file for a given lineage."""
+    config_path = os.path.join(f"../seasonal_{lineage}", "config", config_file)
+    with open(config_path, "r") as json_file:
+        return json.load(json_file)
+
+rule all:
+    input:
+        expand("auspice/suggested_{lineage}.json",
+               lineage=LINEAGE),
+
+rule fetch:
+    output:
+        "auspice/original_{lineage}.json"
+    params:
+        url=lambda wildcards: load_config(wildcards.lineage, "suggestion_params.json")["tree_url"],
+        file_path= TREE_PATH if TREE_PATH else None
+    shell:
+        """
+        cp {params.file_path} {output} || \
+        curl '{params.url}' -o {output} --max-time 10 -A "Mozilla/5.0"
+        """
+
+rule calculate_optimal_scales:
+    input:
+        tree = rules.fetch.output, 
+        weights = "../seasonal_{lineage}/config/weights.json", 
+    output:
+        scales = "../seasonal_{lineage}/config/optimal_scales.json"
+
+    params:
+        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.lineage) else ""
+    shell:
+        """
+        python3 scripts/calculate_optimal_scales.py \
+            --tree {input.tree} \
+            {params.clade_key} \
+            --weights {input.weights} \
+            --output {output.scales}
+        """
+
+rule suggest_new_clades:
+    input:
+        tree = rules.fetch.output,
+        weights = "../seasonal_{lineage}/config/weights.json",
+        aliases = "../seasonal_{lineage}/config/aliases.json",
+        params = "../seasonal_{lineage}/config/suggestion_params.json",
+        optimal = rules.calculate_optimal_scales.output.scales,
+        
+    params:
+        clade = "../seasonal_{lineage}/new-clades.tsv",
+        gff = lambda wildcards: f"--gff {GFF_FILE}" if os.path.exists(GFF_FILE) else "",
+        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.lineage) else "", # flu has different key for clades
+        
+        ## params for the plots
+        plots = "True",  # "True" to generate plots
+        cutoff = [round(x, 1) for x in np.arange(0.5, 1.5, 0.1)],
+        div_add = [round(x, 2) for x in np.arange(0.5, 1.2, 0.2)],
+        min_size = [round(x, 1) for x in np.arange(10, 40, 10)],
+        bush_scale = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
+        bls_range = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
+        div_scale = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
+    
+    output:
+        tree = "auspice/suggested_{lineage}.json"
+    shell:
+        """
+        python3 scripts/add_new_clades.py \
+            --tree {input.tree} \
+            --config {input.params} \
+            --aliases {input.aliases} \
+            --weights {input.weights} \
+            --clades {params.clade} \
+            --output {output.tree} \
+            {params.gff} \
+            {params.clade_key} \
+            \
+            --plots {params.plots} \
+            --cutoff {params.cutoff} \
+            --div_add {params.div_add} \
+            --div_scale {params.div_scale} \
+            --min_size {params.min_size} \
+            --bush_scale {params.bush_scale} \
+            --bls_range {params.bls_range}
+        
+        """ #
+
+        # visualize: http://localhost:4000/suggested/D68?branchLabel=new-clade&c=new-clade&d=tree&p=full&tl=__strain__
+
+
+rule visualization:
+    input:
+        clades = "../seasonal_{lineage}/new-clades_all.tsv",
+        tree = rules.suggest_new_clades.output.tree,
+    params:
+        dir = "../seasonal_{lineage}/plots/",
+    output:
+        tiff = "../seasonal_{lineage}/plots/violin_plots.tiff"
+    shell:
+        """
+        Rscript ../helper-scripts/visualize_clades.R {input.clades} {input.tree} {params.dir}
+        """
+
+
+rule extract_clade_ymls:
+    input:
+        json = "auspice/suggested_D68.json"
+    output:
+        subclades = directory("../seasonal_D68/subclades"),
+        clades = directory("../seasonal_D68/clades"),
+    shell:
+        """
+        python3 ../helper-scripts/extract_yml_from_json.py \
+            --json {input.json} \
+            --subclade-outdir {output.subclades} --clade-outdir {output.clades}
+        """
+
+# generate the markdown summary of the clade definitions
+rule summary:
+    input:
+        expand("subclades/{file}", file=glob_wildcards("subclades/{file}").file)
+    output:
+        "../seasonal_D68/.auto-generated/subclades_D68.md" #".auto-generated/subclades_D68.md"
+    shell:
+        """
+        cd ../seasonal_D68 && \
+        python3 "../helper-scripts/generate_markdown_summary.py" --input-dir subclades --lineage D68 --gene genome
+        """
+
+rule construct_tsv:
+    output:
+        dir("../seasonal_D68/.auto-generated")
+    shell:
+        """
+        cd ../seasonal_D68 && \
+        python3 ../helper-scripts/construct_tsv.py --input-dir subclades --output-tsv {output}/subclades.tsv
+        python ../helper-scripts/construct_tsv.py --input-dir subclades subclade-proposals --output-tsv {output}/subclade-proposals.tsv
+        python ../helper-scripts/construct_tsv.py --input-dir clades --aux-input-dir subclades --flat-output --use-short-name --output-tsv {output}/clades.tsv
+        python ../helper-scripts/construct_tsv.py --input-dir clades --aux-input-dir subclades --flat-output --output-tsv {output}/clades-long.tsv
+        """
+
+rule clean:
+    shell:
+        """
+        rm -r ../seasonal_D68/.auto-generated \
+        ../seasonal_D68/clades/ \
+        ../seasonal_D68/subclades/ \
+        suggested_D68_clades.txt \
+        seasonal_D68/subclades.tex \
+        auspice/original_D68.json
+        auspice/suggested_D68.json
+        """
