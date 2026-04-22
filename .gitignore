@@ -29,3 +29,7 @@ helper-scripts/
 
 
 */config/optimal_scales.json
+
+#results
+*/Rplots.pdf
+virus_*

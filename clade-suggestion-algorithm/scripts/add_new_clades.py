@@ -63,14 +63,14 @@ def label_backbone(tree):
 
 def dealias(n, aliases, label):
     if label in n["node_attrs"]:
-        # ipdb.set_trace()
         levels = n["node_attrs"][label]["value"].split('.')
         if levels[0]=='unassigned':
             full_clade = '*'
         else:
+            if levels[0] not in aliases:
+                raise KeyError(f"Alias for '{levels[0]}' not found in aliases. Current aliases: {aliases.keys()}. Ensure that '{levels[0]}' is defined in the aliases dictionary.")
             full_clade = tuple(list(aliases[levels[0]]) + [int(x) for x in levels[1:]])
         n["node_attrs"][f"full_{label}"] = {"value":full_clade}
-
     if "children" in n:
         for c in n["children"]:
             dealias(c, aliases, label)
@@ -295,9 +295,48 @@ def copy_over_old_clades(tree, old_key, new_key, branch_label):
     copy_recursive(tree, old_key, new_key)
 
 def full_clade_to_short_name(full_clade, aliases):
+    # Track the highest letter/number used for each level
+    used_names = {}
+    for key in aliases.keys():
+        top_level = key[0]  # Get the first element of the tuple
+        if top_level not in used_names:
+            used_names[top_level] = key[1] if len(key)>1 else 0
+        else:
+            used_names[top_level] = max(used_names[top_level], key[1] if len(key)>1 else 0)
+    # Remove unused clades
+    used_names = {key: value for key, value in used_names.items() if key != "Unassigned"}
+    max_letter = max(used_names.keys(), key=lambda k: ord(k[0]))
+
+    def get_next_name(clade, parent):
+        """Generate the next name for a given level."""
+        # ipdb.set_trace()
+        base = clade[0]
+        level = clade[1]
+        if level < 3:
+            if base in used_names and not used_names[base] == level+1:
+                # If the next level is not already used, increment the number           
+                return base+str(level+1)
+            else:
+                if base not in used_names:
+                    return chr(ord(base) + 1)
+                else:
+                     return chr(ord(max_letter) + 1)
+        else:
+                if base not in used_names:
+                     return  chr(ord(base) + 1)
+                else:
+                     return chr(ord(max_letter) + 1)            
+
     for full_parent in sorted(aliases.keys(), key=lambda x:len(x), reverse=True):
         if tuple(full_clade[:len(full_parent)])==full_parent:
             clade_name = aliases[full_parent]
+            # used_names[full_clade[0]]=len(full_parent)
+            # # If the full clade has more than 4 levels, generate a new clade name
+            # if len(full_clade)> 4:
+            #     # Generate a new name for the 5th level and beyond
+            #     clade_name = get_next_name(full_clade, full_parent)
+            #     aliases[tuple(full_clade)] = clade_name  # Update aliases with the new name
+
             if len(full_parent)<len(full_clade):
                 clade_name += '.' + '.'.join([str(x) for x in full_clade[len(full_parent):]])
             return clade_name
@@ -475,7 +514,7 @@ if __name__=="__main__":
     # count.to_csv(args.clades, index=False, header=True, sep='\t')
 
     # export
-    data['meta']['colorings'].append({'key':new_clade_key, 'type':'ordinal', 'title':new_clade_key.capitalize()})
+    data['meta']['colorings'].append({'key':new_clade_key, 'type':'ordinal', 'title':new_clade_key})
     data['meta']['colorings'].append({'key':"score", 'type':'continuous', 'title':"Clade score"})
     data['meta']['colorings'].append({'key':"div_score", 'type':'continuous', 'title':"Divergence score"})
     data['meta']['colorings'].append({'key':"div_impact", 'type':'continuous', 'title':"Divergence impact"})
@@ -506,7 +545,6 @@ if __name__=="__main__":
         # ipdb.set_trace()
 
         for cutoff, div_add, div, bls, size, bush in tqdm(param_combos, desc="Sweeping parameters"):
-        # for cutoff, div_add, div, bls, size, bush in itertools.product(cutoff, div_add,div_scale, bls_range, min_size, bush_scale):
             cfg = copy.deepcopy(config)
             cfg["cutoff"] = cutoff
             cfg["divergence_addition"] = div_add

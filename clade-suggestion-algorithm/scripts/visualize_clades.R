@@ -1,26 +1,31 @@
-suppressMessages({library(tidyverse)
-library(rjson)
-library(scales)
-library(ggpubr)
-library(car)
-library(plotly)
-  library(ggbeeswarm)})
+suppressMessages({
+  library(tidyverse)
+  library(rjson)
+  library(scales)
+  library(ggpubr)
+  library(car)
+  library(plotly)
+  library(argparse)
+  library(ggbeeswarm)
+})
 
-# setwd("//wsl.localhost/SwissTPH-Ubuntu-24.04/home/neunna/workspace/enterovirus-clade-nomenclature/clade-suggestion-algorithm")
+parser <- ArgumentParser()
 
-# read in snakemake arguments: tree, clades
-args <- commandArgs(trailingOnly=TRUE)
-tclades <- args[1]
-ntree <- args[2]
-output_dir <- args[3]
+parser$add_argument('--tree')
+parser$add_argument('--clades')
+parser$add_argument('--out')
+parser$add_argument('--grid')
+parser$add_argument('--params', default = "config/suggestion_params.json")
+parser$add_argument('--dir-out')
+parser$add_argument('--color')
 
-# tclades <- "../seasonal_D68/new-clades_all.tsv"
-# ntree <- "auspice/suggested_D68.json"
-# output_dir <- "../seasonal_D68/plots/"
-##############
+xargs<- parser$parse_args()
 
-clades = tibble(read.csv(tclades, sep="\t", header=T))
-new_tree <- fromJSON(file=ntree)
+
+output_dir <- xargs$dir_out
+clades  <- tibble(read.csv(xargs$clades, sep="\t", header=T))
+new_tree <- fromJSON(file=xargs$tree)
+sugg_params <- fromJSON(file=xargs$params)
 
 ## melt into long format and use geom_smooth to compare effects
 clades_long <- clades %>%
@@ -80,7 +85,7 @@ combined_plot <- annotate_figure(gga,
 
 combined_plot
                         
-ggsave(paste0(output_dir,"/violin_plots.tiff"), 
+ggsave(xargs$out,
        plot = combined_plot, width = 14, height = 8, dpi = 300,bg = "white")
 
 
@@ -223,7 +228,12 @@ labels <- labels %>% rename(
   tip.label = sequence,
   serotype = old_clade,
   subtree = new_clade
-)
+) %>% 
+  # mutate(serotype = factor(serotype, levels = c("A", "A1", "A2", "B", "B1", "B2", "B3", "C", "pre-ABC"))) %>% 
+  mutate(subtree =  fct_relevel(as.factor(subtree), "C", after = Inf)) %>%
+  mutate(serotype = fct_relevel(as.factor(serotype), "pre-ABC", after = Inf)) %>%
+  mutate(subtree =  fct_relevel(subtree, "pre-ABC", after = Inf)) %>%
+  arrange(subtree)
 
 tab <- table(labels$subtree, labels$serotype)
 x <- tab / apply(tab, 1, sum)
@@ -231,10 +241,16 @@ xval <- 1:length(colnames(x))  # not sure if it would be better to keep original
 xsum <- apply(x, 1, function(row) sum(xval*row))
 io <- order(xsum)
 jo <- order(xval)  # column index
-# Plot the table
-tiff(paste0(output_dir, "/clade_table_names.tiff"), width=1200, height=1200, res=300, bg="white")
-{
-  par(mar=c(5,5,1,2))
+
+
+col_scheme <- c("#3f4dcb", "#4681c9", "#5aa4a8", "#78b67e", "#9ebe5a",
+                "#c5b945", "#e0a23a", "#e67231", "#dc2f24")
+
+
+tiff(ifelse(xargs$color == "False", xargs$grid, paste0(str_remove(xargs$grid, ".tiff"), "_colored.tiff")), 
+width=1400, height=1400, res=300, bg="white")
+if (xargs$color == "False"){
+  par(mar=c(5,5,1,2), font.lab=2)
   
   shim <- 0.4 #0.65 or 0.4
   plot(NA, xlim=c(shim, ncol(x)-shim), ylim=c(shim, nrow(x)-shim), 
@@ -253,8 +269,8 @@ tiff(paste0(output_dir, "/clade_table_names.tiff"), width=1200, height=1200, res
     abline(v=i, col='grey80')
     abline(h=i, col='grey80')
   }
-  axis(side=1, at=1:ncol(x)-0.5, label=sort(colnames(x)), cex.axis=0.8, las=2)
-  axis(side=2, at=1:nrow(x)-0.5, label=sort(rownames(x)), #label=paste("s", io-1, sep=""), 
+  axis(side=1, at=1:ncol(x)-0.5, label=colnames(x), cex.axis=0.8, las=2)
+  axis(side=2, at=1:nrow(x)-0.5, label=rownames(x), #label=paste("s", io-1, sep=""), 
        las=2, cex.axis=0.7)
   axis(side=4, at=1:nrow(x)-0.5, label=apply(tab[io,], 1, sum),
        cex.axis=0.6, las=2, lwd=0, line=-0.9)
@@ -265,20 +281,50 @@ tiff(paste0(output_dir, "/clade_table_names.tiff"), width=1200, height=1200, res
   
   # Add your label
   text(x = x_pos, y = y_pos,
-       labels = paste('
-        "cutoff": 1.2,
-        "divergence_addition": 0.55, 
-        "divergence_scale": 10.0,
-        "min_size": 15,
-        "bushiness_branch_scale": 10.0,
-        "branch_length_scale": 20.0'
-       ),
+      labels = paste('
+       "cutoff":', sugg_params$cutoff, ',
+       "divergence_addition":', sugg_params$divergence_addition, ', 
+       "divergence_scale":', sugg_params$divergence_scale, ',
+       "min_size":', sugg_params$min_size, ',
+       "bushiness_branch_scale":', sugg_params$bushiness_branch_scale, ',
+       "branch_length_scale":', sugg_params$branch_length_scale
+      ),
        adj = c(0.0, 0), xpd = NA, cex = 0.6, col = "grey50")
   
-}
-invisible <- dev.off()
-
-
+} else {
+  par(mar=c(5,5,1,2), font.lab=2)
+  shim <- 0.4
+  plot(NA, xlim=c(shim, ncol(x)-shim), ylim=c(shim, nrow(x)-shim), 
+       xaxt='n', yaxt='n',
+       xlab="EV-D68 clades (current)", ylab="Subtrees proposed by algorithm", bty='n')
+  
+  for (i in 1:nrow(x)) {
+    for (j in 1:ncol(x)) {
+      xx <- 1 - x[io[i], jo[j]]
+      
+      if (xx < 1) {  # only draw colored box if match
+        base_col <- col_scheme[j]
+        rect(j-1, i-1, j, i, col=base_col, border=NA)
+        
+        count <- tab[io[i], jo[j]]
+        if (count > 0) {
+          # text(j-0.5, i-0.5, adj=0.5, label=count, cex=0.5)
+        }
+      }
+    }
+  }
+  
+  for (i in 0:nrow(x)-1) {
+    abline(v=i, col='grey85')
+    abline(h=i, col='grey85')
+  }
+  
+  axis(side=1, at=1:ncol(x)-0.5, label=colnames(x), cex.axis=0.8, las=2)
+  axis(side=2, at=1:nrow(x)-0.5, label=rownames(x), las=2, cex.axis=0.5)
+  axis(side=4, at=1:nrow(x)-0.5, label=apply(tab[io,], 1, sum),
+       cex.axis=0.6, las=2, lwd=0, line=-0.7)
+  }
+invisible(dev.off())
 
 
 ## Bushiness is weird - no effect at all?
@@ -293,8 +339,8 @@ invisible <- dev.off()
 #   geom_point()
 
 # interaction linear model
-lm_model <- lm(new_clade ~ cutoff * divergence_addition * divergence_scale * min_size * bushiness_branch_scale * branch_length_scale, data = clades)
-summary(lm_model)
+# lm_model <- lm(new_clade ~ cutoff * divergence_addition * divergence_scale * min_size * bushiness_branch_scale * branch_length_scale, data = clades)
+# summary(lm_model)
 
 # Check for multicollinearity
 

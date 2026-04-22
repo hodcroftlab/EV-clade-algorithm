@@ -74,12 +74,12 @@ But together with a phylogenetic score and the divergence contribution, the thre
 
 ## Usage
 
-The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](seasonal_D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](seasonal_D68/config/suggestion_params.json). 
+The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](virus_D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](virus_D68/config/suggestion_params.json). 
 
 The following directory and file structure is required:
 ```
 enterovirus-clade-nomenclature/
-├── seasonal_{lineage}/
+├── virus_{lineage}/
 │   ├── config/
 │   │   ├── suggestion_params.json
 │   │   ├── weights.json
@@ -96,7 +96,36 @@ enterovirus-clade-nomenclature/
 │   ├── README.md       (optional)
 ```
 
-If you're unsure about the optimal scales for `suggestion_params.json`, you can run the [calculate_optimal_scales](clade-suggestion-algorithm/scripts/calculate_optimal_scales.py) script. This script will suggest optimal scales based on the size and structure of your JSON tree. 
+### Steps
+Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
+
+1. Create a new directory for the lineage:
+    ```
+    mkdir ../virus_<lineage>
+    ```
+
+2. Copy or create the necessary `config/` files. 
+    - adjust the `tree_url` in `suggestion_params.json`
+    - define some weights (e.g. BC, DE loop in VP1) in `weights.json`
+    - define the current nomenclature in `aliases.json`
+    - provide a genome annotation file in `genome_annotation.gff3` -> or provide a list of proteins in `suggestion_params.json`
+
+
+3. Execute the `fetch` rule.
+
+4. (Run the `calculate_optimal_scales` rule:)  
+    If you're unsure about the optimal scales for `suggestion_params.json`, you can use the [calculate_optimal_scales](clade-suggestion-algorithm/scripts/calculate_optimal_scales.py) script. This script analyzes the size and structure of your JSON tree to suggest optimal scales.
+
+5. Run the main script:
+    ```
+    snakemake -c 1 suggest_new_clades
+    ```
+    This will generate the output file `auspice/suggested_<lineage>.json`.
+
+6. To execute all steps at once, use:
+    ```
+    snakemake -c 1 all
+    ```
 
 ### Key Parameters to Adjust
 Please review and adjust the following scales carefully:
