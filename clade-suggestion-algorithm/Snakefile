@@ -37,7 +37,7 @@ def load_config(lineage, config_file="suggestion_params.json"):
 # ! provide a genome annotation file in genome_annotation.gff3 -> or provide a list of proteins in suggestion_params.json
 
 # what are the lineages?
-LINEAGE = ["d68", "a71", "a16"]  # Add more lineages as needed
+LINEAGE = ["ev-d68", "ev-a71", "cva16"]  # Add more lineages as needed
 
 
 rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
@@ -57,20 +57,57 @@ TREE_PATH = "../../nextclade_{lineage}/results/auspice.json" # or TREE_PATH= Non
 
 rule fetch:
     output:
-        "auspice/original_{lineage}.json"
+        tree = "auspice/original_{lineage}.json",
+        annotation = "../virus_{lineage}/config/genome_annotation.gff3",
     params:
-        url=lambda wildcards: load_config(wildcards.lineage, "suggestion_params.json")["tree_url"],
-        file_path= TREE_PATH if TREE_PATH else None
+        lineage="{lineage}",
+        tree_url=lambda wildcards: load_config(wildcards.lineage, "suggestion_params.json")["tree_url"],
     shell:
         """
-        echo "Fetching tree for enterovirus {wildcards.lineage} from {params.url} or {params.file_path}"
-        cp {params.file_path} {output} || \
-        curl '{params.url}' -o {output} --max-time 10 -A "Mozilla/5.0"
+        # Try Nextclade first
+        echo "Attempting to fetch from Nextclade: enpen/enterovirus/{params.lineage}"
+        if nextclade dataset get --name "enpen/enterovirus/{params.lineage}" --output-dir .nextclade_tmp 2>/dev/null; then
+            if [[ -f ".nextclade_tmp/tree.json" ]]; then
+                echo "✓ Success: Got tree from Nextclade"
+                cp .nextclade_tmp/tree.json "{output.tree}"
+                if [[ -f ".nextclade_tmp/genome_annotation.gff3" ]]; then
+                    cp .nextclade_tmp/genome_annotation.gff3 {output.annotation}
+                    echo "✓ Got annotation from Nextclade"
+                fi
+                rm -rf .nextclade_tmp
+                exit 0
+            fi
+        fi
+            
+        # Fallback to Nextstrain
+        echo "✗ Nextclade not available, falling back to Nextstrain"
+        curl "{params.tree_url}" -o "{output.tree}" --max-time 10 -A "Mozilla/5.0"
+        if [[ ! -f "{output.tree}" ]]; then
+            echo "✗ Failed to fetch tree from Nextstrain"
+            exit 1
+        fi
+        echo "✓ Success: Got tree from Nextstrain"
+
+        # Extract genome_annotations from auspice.json and convert to GFF3
+        seqid=$(jq -r '.meta.genome_annotations.nuc.seqid' "{output.tree}" | sed 's|.*/||;s|\.gb||')
+        seq_start=$(jq -r '.meta.genome_annotations.nuc.start' "{output.tree}")
+        seq_end=$(jq -r '.meta.genome_annotations.nuc.end' "{output.tree}")
+        
+        (
+            echo "##gff-version 3"
+            echo "#!gff-spec-version 1.21"
+            echo "##sequence-region $seqid $seq_start $seq_end"
+            jq -r '.meta.genome_annotations | to_entries[] | 
+            "\\(.value.seqid)\\t.\\t\\(.value.type)\\t\\(.value.start)\\t\\(.value.end)\\t.\\t\\(.value.strand)\\t.\\tID=\\(.key);Name=\\(.key)"' \
+            "{output.tree}"
+        ) > "{output.annotation}"
+            
+        echo "✓ Generated GFF3 from tree metadata"
         """
 
 rule calculate_optimal_scales:
     input: # define config paths
-        tree = rules.fetch.output, 
+        tree = rules.fetch.output.tree, 
         weights = "../virus_{lineage}/config/weights.json", 
     output:
         scales = "../virus_{lineage}/config/optimal_scales.json"
@@ -88,7 +125,7 @@ rule calculate_optimal_scales:
 
 rule suggest_new_clades:
     input: # define config paths
-        tree = ancient(rules.fetch.output),
+        tree = ancient(rules.fetch.output.tree),
         weights = "../virus_{lineage}/config/weights.json",
         aliases = "../virus_{lineage}/config/aliases.json",
         params = "../virus_{lineage}/config/suggestion_params.json",
