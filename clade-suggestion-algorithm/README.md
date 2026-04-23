@@ -30,7 +30,7 @@ In addition, we calculate the number of leafs $l_n$ below each branch in the tre
 ### Branch score
 To prioritize branches with important mutations and to pick branches with many amino acid substitutions over those with only synonymous changes, we assign each mutation a weight and sum these weights for all mutations on the branch.
 For Enterovirus D68 this is currently mutations in th BC and DE-loop and the C-Terminus.
-These weights can be specified in a position specific way for each lineage and gene.
+These weights can be specified in a position specific way for each virus and gene.
 The branch score is called $b_n$ below.
 
 ### Divergence
@@ -40,7 +40,7 @@ The more divergence has accumulated, since the last break point, the more readil
 The divergence score is called $d_n$ below.
 
 ## Aggregation of scores
-Above, we defined three scores that together should determine whether a branch should be designated the root of a novel clade of lineage.
+Above, we defined three scores that together should determine whether a branch should be designated the root of a novel clade of virus.
 The branch score and the divergence score essentially count mutations and increase with the depth of the tree, but are fairly independent of sampling density.
 The phylogenetic bushiness $\phi_c$ and the tip count depend strongly on sampling density.
 To consistently combine these into a binary outcome, we need to normalize them.
@@ -67,8 +67,8 @@ New clades are assigned by walking through the tree in pre-order (parents before
 ```math
 \psi_n + \beta_n + \delta_b > \theta
 ```
-The current value for the threshold in the influenza virus lineage assignment is $\theta=1.0$.
-This means any one score alone is insufficient to trigger a new lineage.
+The current value for the threshold in the influenza virus virus assignment is $\theta=1.0$.
+This means any one score alone is insufficient to trigger a new virus.
 But together with a phylogenetic score and the divergence contribution, the threshold can be crossed for a single VP1 mutation.
 
 
@@ -79,7 +79,7 @@ The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [confi
 The following directory and file structure is required:
 ```
 enterovirus-clade-nomenclature/
-├── virus_{lineage}/
+├── virus_{virus}/
 │   ├── config/
 │   │   ├── suggestion_params.json
 │   │   ├── weights.json
@@ -99,9 +99,9 @@ enterovirus-clade-nomenclature/
 ### Steps
 Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
 
-1. Create a new directory for the lineage:
+1. Create a new directory for the virus:
     ```
-    mkdir ../virus_<lineage>
+    mkdir ../virus_<virus>
     ```
 
 2. Copy or create the necessary `config/` files. 
@@ -120,7 +120,7 @@ Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
     ```
     snakemake -c 1 suggest_new_clades
     ```
-    This will generate the output file `auspice/suggested_<lineage>.json`.
+    This will generate the output file `auspice/suggested_<virus>.json`.
 
 6. To execute all steps at once, use:
     ```

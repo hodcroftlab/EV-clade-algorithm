@@ -3,51 +3,28 @@ import json
 import os
 import ipdb
 
-def load_config(lineage, config_file="suggestion_params.json"):
-    """Load the JSON configuration file for a given lineage."""
-    config_path = os.path.join(f"../virus_{lineage}", "config", config_file)
+def load_config(virus, config_file="suggestion_params.json"):
+    """Load the JSON configuration file for a given virus."""
+    config_path = os.path.join(f"../virus_{virus}", "config", config_file)
     with open(config_path, "r") as json_file:
         return json.load(json_file)
-
-## please make sure the directory structure is as follows:
-# enterovirus-clade-nomenclature/
-# ├── virus_{lineage}/
-# │   ├── config/
-# │   │   ├── suggestion_params.json
-# │   │   ├── weights.json
-# │   │   ├── aliases.json
-# │   │   ├── genome_annotation.gff3
-# │   ├── CHANGELOG.md
-# │   ├── README.md
-# ├── clade-suggestion-algorithm/
-# │   ├── auspice/
-# │   ├── scripts/
-# │   │   ├── add_new_clades.py
-# │   │   ├── calculate_optimal_scales.py
-# │   │   ├── construct_tsv.py
-# │   │   ├── extract_yml_from_json.py
-# │   │   ├── generate_markdown_summary.py
-# │   │   ├── visualize_clades.R
-# │   ├── Snakefile
-# │   ├── README.md
 
 # ! adjust the `tree_url` in suggestion_params.json
 # ! define some weights (e.g. BC, DE loop in VP1) in weights.json
 # ! define the current nomenclature in aliases.json
-# ! provide a genome annotation file in genome_annotation.gff3 -> or provide a list of proteins in suggestion_params.json
 
-# what are the lineages?
-LINEAGE = ["ev-d68", "ev-a71", "cva16"]  # Add more lineages as needed
+# what are the viruses?
+VIRUS = ["ev-d68", "ev-a71", "cva16"]  # Add more viruses (enteroviruses) as needed
 
 
 rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
     input:
-        expand("auspice/suggested_{lineage}.json", lineage=LINEAGE),
-        expand("../virus_{lineage}/clades", lineage=LINEAGE),
-        expand("../virus_{lineage}/.auto-generated/clades_{lineage}.md", lineage=LINEAGE)
+        expand("auspice/suggested_{virus}.json", virus=VIRUS),
+        expand("../virus_{virus}/clades", virus=VIRUS),
+        expand("../virus_{virus}/.auto-generated/clades_{virus}.md", virus=VIRUS)
 
 
-TREE_PATH = "../../nextclade_{lineage}/results/auspice.json" # or TREE_PATH= None: use the URL from the config file
+TREE_PATH = "../../nextclade_{virus}/results/auspice.json" # or TREE_PATH= None: use the URL from the config file
 # TREE_PATH= None  # ⬆
 
 
@@ -57,16 +34,16 @@ TREE_PATH = "../../nextclade_{lineage}/results/auspice.json" # or TREE_PATH= Non
 
 rule fetch:
     output:
-        tree = "auspice/original_{lineage}.json",
-        annotation = "../virus_{lineage}/config/genome_annotation.gff3",
+        tree = "auspice/original_{virus}.json",
+        annotation = "../virus_{virus}/config/genome_annotation.gff3",
     params:
-        lineage="{lineage}",
-        tree_url=lambda wildcards: load_config(wildcards.lineage, "suggestion_params.json")["tree_url"],
+        virus="{virus}",
+        tree_url=lambda wildcards: load_config(wildcards.virus, "suggestion_params.json")["tree_url"],
     shell:
         """
         # Try Nextclade first
-        echo "Attempting to fetch from Nextclade: enpen/enterovirus/{params.lineage}"
-        if nextclade dataset get --name "enpen/enterovirus/{params.lineage}" --output-dir .nextclade_tmp 2>/dev/null; then
+        echo "Attempting to fetch from Nextclade: enpen/enterovirus/{params.virus}"
+        if nextclade dataset get --name "enpen/enterovirus/{params.virus}" --output-dir .nextclade_tmp 2>/dev/null; then
             if [[ -f ".nextclade_tmp/tree.json" ]]; then
                 echo "✓ Success: Got tree from Nextclade"
                 cp .nextclade_tmp/tree.json "{output.tree}"
@@ -106,14 +83,14 @@ rule fetch:
         """
 
 rule calculate_optimal_scales:
-    input: # define config paths
-        tree = rules.fetch.output.tree, 
-        weights = "../virus_{lineage}/config/weights.json", 
+    input: 
+        tree = rules.fetch.output.tree,                           ## auspice.json tree
+        weights = "../virus_{virus}/config/weights.json",       ## weights: if some mutations are more important than others (e.g., epitopes) put them in here
     output:
-        scales = "../virus_{lineage}/config/optimal_scales.json"
+        scales = "../virus_{virus}/config/optimal_scales.json"  ## gives you the optimal parameters to run the algorithm with
 
     params:
-        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.lineage) else ""
+        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else ""
     shell:
         """
         python3 scripts/calculate_optimal_scales.py \
@@ -126,27 +103,27 @@ rule calculate_optimal_scales:
 rule suggest_new_clades:
     input: # define config paths
         tree = ancient(rules.fetch.output.tree),
-        weights = "../virus_{lineage}/config/weights.json",
-        aliases = "../virus_{lineage}/config/aliases.json",
-        params = "../virus_{lineage}/config/suggestion_params.json",
+        weights = "../virus_{virus}/config/weights.json",
+        aliases = "../virus_{virus}/config/aliases.json",
+        params = "../virus_{virus}/config/suggestion_params.json",
         optimal = rules.calculate_optimal_scales.output.scales,
         
     params:
-        clade = "../virus_{lineage}/new-clades.tsv",
-        gff = lambda wildcards: f"--gff ../virus_{wildcards.lineage}/config/genome_annotation.gff3" if os.path.exists(f"../virus_{wildcards.lineage}/config/genome_annotation.gff3") else "",    
-        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.lineage) else "", # flu has different key for clades
+        clade = "../virus_{virus}/new-clades.tsv",
+        gff = lambda wildcards: f"--gff ../virus_{wildcards.virus}/config/genome_annotation.gff3" if os.path.exists(f"../virus_{wildcards.virus}/config/genome_annotation.gff3") else "",    
+        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else "", # flu has different key for clades
         
         ## params for the plots
         plots = "False",  # "True" to generate plots
         cutoff = [round(x, 1) for x in np.arange(0.5, 1.5, 0.1)],
         div_add = [round(x, 2) for x in np.arange(0.5, 1.2, 0.2)],
         min_size = [round(x, 1) for x in np.arange(10, 40, 10)],
-        bush_scale = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
-        bls_range = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
-        div_scale = lambda wildcards: load_config(wildcards.lineage, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
+        bush_scale = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
+        bls_range = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
+        div_scale = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
     
     output:
-        tree = "auspice/suggested_{lineage}.json"
+        tree = "auspice/suggested_{virus}.json"
     shell:
         """
         if [ -n "{params.gff}" ]; then 
@@ -179,16 +156,16 @@ rule suggest_new_clades:
 
 rule visualization:
     input:
-        clades = "../virus_{lineage}/new-clades_all.tsv",
+        clades = "../virus_{virus}/new-clades_all.tsv",
         tree = rules.suggest_new_clades.output.tree,
-        d = "../virus_{lineage}/plots/",
-        params = "../virus_{lineage}/config/suggestion_params.json",
+        d = "../virus_{virus}/plots/",
+        params = "../virus_{virus}/config/suggestion_params.json",
     params:
         color = "True",
-        grid = "../virus_{lineage}/plots/clade_table_names.tiff"
+        grid = "../virus_{virus}/plots/clade_table_names.tiff"
 
     output:
-        tiff = "../virus_{lineage}/plots/violin_plots.tiff",
+        tiff = "../virus_{virus}/plots/violin_plots.tiff",
     shell:
         """
         Rscript scripts/visualize_clades.R --clades {input.clades} --tree {input.tree} \
@@ -200,7 +177,7 @@ rule extract_clade_ymls:
     input:
         json = rules.suggest_new_clades.output.tree,
     output:
-        clades = directory("../virus_{lineage}/clades"),
+        clades = directory("../virus_{virus}/clades"),
     shell:
         """
         python3 scripts/extract_yml_from_json.py \
@@ -214,22 +191,22 @@ rule summary:
         expand("clades/{file}", file=glob_wildcards("clades/{file}").file),
         clades = rules.extract_clade_ymls.output.clades,
     output:
-        md = "../virus_{lineage}/.auto-generated/clades_{lineage}.md", #".auto-generated/subclades_D68.md"
+        md = "../virus_{virus}/.auto-generated/clades_{virus}.md", #".auto-generated/subclades_D68.md"
         
     shell:
         """
         python3 scripts/generate_markdown_summary.py \
-            --input-dir {input.clades} --lineage {wildcards.lineage} --file {output.md}
+            --input-dir {input.clades} --virus {wildcards.virus} --file {output.md}
         """
 
 rule construct_tsv:
     input:
-        "../virus_{lineage}/clades"
+        "../virus_{virus}/clades"
     output:
-        tsv = "../virus_{lineage}/.auto-generated/subclades.tsv",
-        ptsv = "../virus_{lineage}/.auto-generated/subclade-proposals.tsv",
-        clades = "../virus_{lineage}/.auto-generated/clades.tsv",
-        clades_long = "../virus_{lineage}/.auto-generated/clades-long.tsv"
+        tsv = "../virus_{virus}/.auto-generated/subclades.tsv",
+        ptsv = "../virus_{virus}/.auto-generated/subclade-proposals.tsv",
+        clades = "../virus_{virus}/.auto-generated/clades.tsv",
+        clades_long = "../virus_{virus}/.auto-generated/clades-long.tsv"
     shell:
         """
         python3 scripts/construct_tsv.py --input-dir {input} --output-tsv {output.tsv}
