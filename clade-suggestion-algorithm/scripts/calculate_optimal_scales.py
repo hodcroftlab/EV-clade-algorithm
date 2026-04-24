@@ -224,7 +224,7 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
     print(f"   - Branches with AA mutations: {len(aa_weights_nonzero)}")
     print(f"   - Mean weighted AA mutations per branch: {np.mean(aa_weights_nonzero):.2f}")
     print(f"   - Median weighted AA mutations per branch: {np.median(aa_weights_nonzero):.2f}")
-    print(f"   - Recommended branch_length_scale: {branch_length_scale:.1f}")
+    print(f"   - Recommended branch_length_scale: {branch_length_scale:.2f}")
     
     # 3. Calculate divergence_scale (within vs between clade divergence)
     print("\n3. Calculating divergence_scale...")
@@ -331,7 +331,7 @@ def main():
     print("="*80)
     i=0
     for param, value in results['optimal_scales'].items():
-        print(f"{param:25}: {value} [{ranges[i][0]}-{ranges[i][1]}]")
+        print(f"{param:25}: {value} [{round(ranges[i][0],1)}-{round(ranges[i][1],1)}]")
         i+=1
     
     print("\n" + "="*80)

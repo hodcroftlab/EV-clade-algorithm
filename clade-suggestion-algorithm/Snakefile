@@ -16,6 +16,9 @@ def load_config(virus, config_file="suggestion_params.json"):
 # what are the viruses?
 VIRUS = ["ev-d68", "ev-a71", "cva16"]  # Add more viruses (enteroviruses) as needed
 
+# Define Clade Aliases
+MODE = ["default","manual"] ## CHOSE ONE MODE: for first run use default clades - later you can create more specific ones
+ALIAS = "../virus_{virus}/config/aliases_default.json", # _default or _manual
 
 rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
     input:
@@ -23,9 +26,7 @@ rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
         expand("../virus_{virus}/clades", virus=VIRUS),
         expand("../virus_{virus}/.auto-generated/clades_{virus}.md", virus=VIRUS)
 
-
-TREE_PATH = "../../nextclade_{virus}/results/auspice.json" # or TREE_PATH= None: use the URL from the config file
-# TREE_PATH= None  # ⬆
+ruleorder: fetch > calculate_optimal_scales > suggest_new_clades
 
 
 # if not os.path.exists(GFF_FILE):
@@ -84,7 +85,7 @@ rule fetch:
 
 rule calculate_optimal_scales:
     input: 
-        tree = rules.fetch.output.tree,                           ## auspice.json tree
+        tree = rules.fetch.output.tree,                         ## auspice.json tree
         weights = "../virus_{virus}/config/weights.json",       ## weights: if some mutations are more important than others (e.g., epitopes) put them in here
     output:
         scales = "../virus_{virus}/config/optimal_scales.json"  ## gives you the optimal parameters to run the algorithm with
@@ -100,11 +101,26 @@ rule calculate_optimal_scales:
             --output {output.scales}
         """
 
+rule setup_aliases:
+    input:
+        tree = "auspice/original_{virus}.json",
+    output:
+        aliases = "../virus_{virus}/config/aliases_default.json",
+    params:
+        clade_key = lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else "",
+    shell:
+        """
+        python3 scripts/extract_aliases_from_tree.py \
+            --tree {input.tree} \
+            {params.clade_key} \
+            --output {output.aliases}
+        """
+
 rule suggest_new_clades:
     input: # define config paths
-        tree = ancient(rules.fetch.output.tree),
+        tree = rules.fetch.output.tree,
+        aliases = ALIAS,
         weights = "../virus_{virus}/config/weights.json",
-        aliases = "../virus_{virus}/config/aliases.json",
         params = "../virus_{virus}/config/suggestion_params.json",
         optimal = rules.calculate_optimal_scales.output.scales,
         
