@@ -1,16 +1,16 @@
 # Pipeline for automated suggestion of new clades of Enteroviruses
 
-
-The general idea of this workflow is to fetch a current tree from Nextstrain that is already annotated with currently used clades, search for clusters in the tree that meet certain criteria (see below), and suggest the branches leading to these clusters as novel clades.
+The general idea of this workflow is to fetch a current tree from Nextclade or Nextstrain that is already annotated with currently used clades, search for clusters in the tree that meet certain criteria (see below), and suggest the branches leading to these clusters as novel clades.
 
 ## Clade naming criteria
 
 The purpose of this workflow is to be run at regular intervals and suggest new clades to a tree that already has annotation.
 It is thus not meant to find a globally optimal partition of an unlabeled tree, but to identify novel groups that meet designation criteria as they grow and evolve over time.
 The three basic aspects that enter the criterion are
- * **size:** big groups should have a higher priority for designation.
- * **divergence:** the more mutations have accumulated relative to the break point of the parent clade, the higher the priority of a novel clade
- * **specific mutations:** Ideally, breakpoints sit on long branches with significant mutation. Such mutations will be better defined for well studied genes like the VP1 of Enteroviruses.
+
+* **size:** big groups should have a higher priority for designation.
+* **divergence:** the more mutations have accumulated relative to the break point of the parent clade, the higher the priority of a novel clade
+* **specific mutations:** Ideally, breakpoints sit on long branches with significant mutation. Such mutations will be better defined for well studied genes like the VP1 of Enteroviruses.
 
 There are many different ways in which these aspects could be combined into a single score.
 The proposal below seems to work well.
@@ -18,9 +18,11 @@ The proposal below seems to work well.
 ### Size and phylogenetic structure
 
 To single out clades in the tree that are of sufficient size and are phylogenetically distinct, we propose a measure similar to the LBI.
+
 ```math
 \phi_n = \sum_{c\in n} (1-e^{-l_c/d}) +  \phi_c e^{-l_c/d}
 ```
+
 where $l_c$ is the length of the branch leading to child node $c$ and $d$ is a distance scale determining how rapidly this score is "forgotten" along the tree.
 Terminal nodes have $\phi_c=1$.
 This way, the contribution of each terminal to its parent $(1-e^{-l_c/d}) + e^{-l_c/d} = 1$ regardless of its branch length.
@@ -28,6 +30,7 @@ Each internal branch has a maximum contribution of 1, less if the branch is shor
 In addition, we calculate the number of leafs $l_n$ below each branch in the tree.
 
 ### Branch score
+
 To prioritize branches with important mutations and to pick branches with many amino acid substitutions over those with only synonymous changes, we assign each mutation a weight and sum these weights for all mutations on the branch.
 For Enterovirus D68 this is currently mutations in th BC and DE-loop and the C-Terminus.
 These weights can be specified in a position specific way for each virus and gene.
@@ -40,51 +43,57 @@ The more divergence has accumulated, since the last break point, the more readil
 The divergence score is called $d_n$ below.
 
 ## Aggregation of scores
+
 Above, we defined three scores that together should determine whether a branch should be designated the root of a novel clade of virus.
 The branch score and the divergence score essentially count mutations and increase with the depth of the tree, but are fairly independent of sampling density.
 The phylogenetic bushiness $\phi_c$ and the tip count depend strongly on sampling density.
 To consistently combine these into a binary outcome, we need to normalize them.
 The suggested normalization for the divergence, the branch score, and the bushiness score is linear saturation.
 If $x$ is the raw score, we calculate the normalized score $X$ as
+
 ```math
 X = \frac{x}{x+s_x}
 ```
+
 where $s_x$ is a scale associated with the score.
 For the branch score and the divergence, this is essentially given by the number of mutations considered a significant.
 Since the phylogenetic score depends on the sample size, it makes sense to choose that normalization to be proportional to the tree, which is conveniently done by picking the max or median value.
 We currently pick the median.
 
 The three normalized scores are then added and if their sum exceeds a cut-off, a new clade is added.
+
 ```math
 \Phi_n + B_n + D_n > C
 ```
+
 Not that the divergence of the downstream part of the tree need recalculating after designating a new clade.
 The clade size criterion is added as a hard binary threshold.
 
 ## Clade assignment
 
 New clades are assigned by walking through the tree in pre-order (parents before children) and a new clade is designated if the sum of scores exceeds a certain threshold $\theta$.
+
 ```math
 \psi_n + \beta_n + \delta_b > \theta
 ```
+
 The current value for the threshold in the influenza virus virus assignment is $\theta=1.0$.
 This means any one score alone is insufficient to trigger a new virus.
 But together with a phylogenetic score and the divergence contribution, the threshold can be crossed for a single VP1 mutation.
 
-
 ## Usage
 
-The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](virus_D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](virus_D68/config/suggestion_params.json). 
+The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](virus_D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](virus_D68/config/suggestion_params.json).
 
 The following directory and file structure is required:
-```
+
+```bash
 enterovirus-clade-nomenclature/
-├── virus_{virus}/
+├── virus_EV-XX/
 │   ├── config/
 │   │   ├── suggestion_params.json
 │   │   ├── weights.json
 │   │   ├── aliases.json
-│   │   ├── genome_annotation.gff3   (optional if defining a list of proteins in config)
 │   ├── CHANGELOG.md    (optional)
 │   ├── README.md       (optional)
 ├── clade-suggestion-algorithm/
@@ -97,19 +106,20 @@ enterovirus-clade-nomenclature/
 ```
 
 ### Steps
+
 Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
 
 1. Create a new directory for the virus:
-    ```
+
+    ```bash
     mkdir ../virus_<virus>
     ```
 
-2. Copy or create the necessary `config/` files. 
-    - adjust the `tree_url` in `suggestion_params.json`
-    - define some weights (e.g. BC, DE loop in VP1) in `weights.json`
-    - define the current nomenclature in `aliases.json`
-    - provide a genome annotation file in `genome_annotation.gff3` -> or provide a list of proteins in `suggestion_params.json`
-
+2. Copy or create the necessary `config/` files.
+    * adjust the `tree_url` in `suggestion_params.json`
+    * define some weights (e.g. BC, DE loop in VP1) in `weights.json`
+    * define the current nomenclature in `aliases.json`
+    * provide a genome annotation file in `genome_annotation.gff3` -> or provide a list of proteins in `suggestion_params.json`
 
 3. Execute the `fetch` rule.
 
@@ -117,52 +127,56 @@ Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
     If you're unsure about the optimal scales for `suggestion_params.json`, you can use the [calculate_optimal_scales](clade-suggestion-algorithm/scripts/calculate_optimal_scales.py) script. This script analyzes the size and structure of your JSON tree to suggest optimal scales.
 
 5. Run the main script:
-    ```
+
+    ```bash
     snakemake -c 1 suggest_new_clades
     ```
+
     This will generate the output file `auspice/suggested_<virus>.json`.
 
 6. To execute all steps at once, use:
-    ```
+
+    ```bash
     snakemake -c 1 all
     ```
 
 ### Key Parameters to Adjust
+
 Please review and adjust the following scales carefully:
 
-- **`branch_length_scale`**: Determines how many amino acid (AA) mutations are considered significant.
-- **`divergence_scale`**: Defines the difference between within-clade and between-clade divergence. 
-    - In Auspice, check the `divergence score`. Not all branches and tips should appear red. If needed, try multiplying the scale by 10 and observe the difference.
-    - The divergence score is based on AA mutations. You can specify which proteins to use under `"proteins": []` in `suggestion_params.json`. If left empty, all proteins listed in the GFF3 file will be used.
-- **`bushiness_branch_scale`**: Represents the expected number of nucleotide (NT) mutations and their relationship to the overall tree size (typically ~0.1%).
+* **`branch_length_scale`**: Determines how many amino acid (AA) mutations are considered significant.
+* **`divergence_scale`**: Defines the difference between within-clade and between-clade divergence.
+  * In Auspice, check the `divergence score`. Not all branches and tips should appear red. If needed, try multiplying the scale by 10 and observe the difference.
+  * The divergence score is based on AA mutations. You can specify which proteins to use under `"proteins": []` in `suggestion_params.json`. If left empty, all proteins listed in the GFF3 file will be used.
+* **`bushiness_branch_scale`**: Represents the expected number of nucleotide (NT) mutations and their relationship to the overall tree size (typically ~0.1%).
 
 Once the scales are finalized, adjust the other parameters while viewing the tree in Auspice (`auspice --datasetDir auspice`):
 
-- **`min_size`**: Set this as low as possible (e.g., `1`) to observe the effects of different scores on clade formation.
-- **`divergence_addition`**: Defines the impact of divergence on the final clade score. For example, `0.5` means divergence contributes a maximum of 0.5 to the score. A recommended range is between `0.5-1.0`.
-- In Auspice, navigate to the `Clade Score` coloring to view clade scores for all branches and tips. Adjust the remaining parameters until you're satisfied with the number and size of the new clades.
+* **`min_size`**: Set this as low as possible (e.g., `1`) to observe the effects of different scores on clade formation.
+* **`divergence_addition`**: Defines the impact of divergence on the final clade score. For example, `0.5` means divergence contributes a maximum of 0.5 to the score. A recommended range is between `0.5-1.0`.
+* In Auspice, navigate to the `Clade Score` coloring to view clade scores for all branches and tips. Adjust the remaining parameters until you're satisfied with the number and size of the new clades.
 
 ### Recommendations
 
 Here are some tips for adjusting parameters based on your desired clustering outcomes:
 
-- **To create fewer and larger clusters**:
-    - Increase (`⬆️`) `min_size`.
+* **To create fewer and larger clusters**:
+  * Increase (`⬆️`) `min_size`.
 
-- **To focus more on AA-based clades**:
-    - Set `divergence_addition=1.0`.
-    - Decrease (`⬇️`) `divergence_scale`.
-    - Decrease (`⬇️`) `branch_length_scale`.
+* **To focus more on AA-based clades**:
+  * Set `divergence_addition=1.0`.
+  * Decrease (`⬇️`) `divergence_scale`.
+  * Decrease (`⬇️`) `branch_length_scale`.
 
-- **To focus more on NT-based clades**:
-    - Decrease (`⬇️`) `divergence_addition`.
-    - Decrease (`⬇️`) `bushiness_branch_scale`.
-    - Increase (`⬆️`) `divergence_scale`.
-    - Increase (`⬆️`) `branch_length_scale`.
-    - Alternatively, specify `"proteins": ['nuc']` in `suggestion_params.json`.
+* **To focus more on NT-based clades**:
+  * Decrease (`⬇️`) `divergence_addition`.
+  * Decrease (`⬇️`) `bushiness_branch_scale`.
+  * Increase (`⬆️`) `divergence_scale`.
+  * Increase (`⬆️`) `branch_length_scale`.
+  * Alternatively, specify `"proteins": ['nuc']` in `suggestion_params.json`.
 
-- **To reduce the total number of clusters**:
-    - Increase (`⬆️`) `cutoff`. Check the `clade score` to find the optimal range (usually between `1.0-1.5`).
+* **To reduce the total number of clusters**:
+  * Increase (`⬆️`) `cutoff`. Check the `clade score` to find the optimal range (usually between `1.0-1.5`).
 
-- **To create more clusters near the tips**:
-    - Set a `min_date`. Clusters formed before this date will be considered “dead” and won’t receive new names.
+* **To create more clusters near the tips**:
+  * Set a `min_date`. Clusters formed before this date will be considered “dead” and won’t receive new names.
