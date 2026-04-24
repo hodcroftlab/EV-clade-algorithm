@@ -1,0 +1,51 @@
+# config.yaml - all virus parameters in one place
+# Users edit ONE file; no per-virus JSON configs needed
+
+viruses:
+  ev-d68:
+    # Input source
+    tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/enterovirus/d68/genome"
+    
+    # Algorithm parameters (virus-specific tuned values)
+    cutoff: 1.3
+    divergence_addition: 1
+    divergence_scale: 5
+    min_size: 30
+    bushiness_branch_scale: 9
+    branch_length_scale: 5
+    proteins: []
+    
+  ev-a71:
+    tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/enterovirus/A71/whole-genome"
+    cutoff: 1.1
+    divergence_addition: 0.8
+    divergence_scale: 31
+    min_size: 40
+    bushiness_branch_scale: 13
+    branch_length_scale: 7.1
+    proteins: []
+    
+  cva16:
+    tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/coxsackievirus/A16/whole-genome"
+    cutoff: 1.0
+    divergence_addition: 1
+    divergence_scale: 13
+    min_size: 10
+    bushiness_branch_scale: 26
+    branch_length_scale: 14
+    
+  cva10:
+    tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/coxsackievirus/A10/whole-genome"
+    cutoff: 1.05
+    divergence_addition: 0.15
+    divergence_scale: 3
+    min_size: 6
+    bushiness_branch_scale: 5
+    branch_length_scale: 5
+
+# Global defaults (fallback if virus-specific not set)
+defaults:
+  max_date: 2026-12-31
+  min_date: 2020-01-01
+  date_range_type: "tip_date"
+  alias: "default" # default or manual

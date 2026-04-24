@@ -83,13 +83,13 @@ But together with a phylogenetic score and the divergence contribution, the thre
 
 ## Usage
 
-The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](virus_D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](virus_D68/config/suggestion_params.json).
+The [Snakefile](clade-suggestion-algorithm/Snakefile) is designed to take [config files](D68/config) as input and automatically download the original Nextstrain tree specified in the [suggestion_params.json](D68/config/suggestion_params.json).
 
 The following directory and file structure is required:
 
 ```bash
 enterovirus-clade-nomenclature/
-├── virus_EV-XX/
+├── EV-XX/
 │   ├── config/
 │   │   ├── suggestion_params.json
 │   │   ├── weights.json
@@ -112,7 +112,7 @@ Navigate to the `clade-suggestion-algorithm/` directory and follow these steps:
 1. Create a new directory for the virus:
 
     ```bash
-    mkdir ../virus_<virus>
+    mkdir ../<virus>
     ```
 
 2. Copy or create the necessary `config/` files.

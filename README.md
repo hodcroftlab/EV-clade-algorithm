@@ -19,7 +19,7 @@ Adapts the [influenza clade-suggestion-algorithm](https://github.com/influenza-c
 ```bash
 # please make sure the directory structure is as follows:
 enterovirus-clade-nomenclature/
-├── virus_{virus}/
+├── {virus}/
 │   ├── config/
 │   │   ├── suggestion_params.json
 │   │   ├── weights.json

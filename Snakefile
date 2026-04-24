@@ -3,43 +3,39 @@ import json
 import os
 import ipdb
 
-def load_config(virus, config_file="suggestion_params.json"):
-    """Load the JSON configuration file for a given virus."""
-    config_path = os.path.join(f"../virus_{virus}", "config", config_file)
-    with open(config_path, "r") as json_file:
-        return json.load(json_file)
+# Load config once
+configfile: "config.yaml"
+
+VIRUSES = config["viruses"]
+
+wildcard_constraints:
+    virus=VIRUSES
+
 
 # ! adjust the `tree_url` in suggestion_params.json
 # ! define some weights (e.g. BC, DE loop in VP1) in weights.json
 # ! define the current nomenclature in aliases.json
 
-# what are the viruses?
-VIRUS = ["ev-d68", "ev-a71", "cva16"]  # Add more viruses (enteroviruses) as needed
-
-# Define Clade Aliases
-MODE = ["default","manual"] ## CHOSE ONE MODE: for first run use default clades - later you can create more specific ones
-ALIAS = "../virus_{virus}/config/aliases_default.json", # _default or _manual
-
 rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
     input:
-        expand("auspice/suggested_{virus}.json", virus=VIRUS),
-        expand("../virus_{virus}/clades", virus=VIRUS),
-        expand("../virus_{virus}/.auto-generated/clades_{virus}.md", virus=VIRUS)
+        expand("auspice/original_{virus}.json", virus=VIRUSES),
+        expand("{virus}/results/optimal_scales.json", virus=VIRUSES),
+        expand("auspice/suggested_{virus}.json", virus=VIRUSES),
+        # expand("{virus}/clades", virus=VIRUSES),
+        # expand("{virus}/.auto-generated/clades_{virus}.md", virus=VIRUSES)
 
 ruleorder: fetch > calculate_optimal_scales > suggest_new_clades
 
 
-# if not os.path.exists(GFF_FILE):
-#     raise FileNotFoundError(f"GFF file not found: {GFF_FILE}")
-
-
+## if you provide a tree in json format, this step will be skipped.
 rule fetch:
     output:
         tree = "auspice/original_{virus}.json",
-        annotation = "../virus_{virus}/config/genome_annotation.gff3",
+        annotation = "{virus}/resources/genome_annotation.gff3",
     params:
-        virus="{virus}",
-        tree_url=lambda wildcards: load_config(wildcards.virus, "suggestion_params.json")["tree_url"],
+        virus = "{virus}",
+        tree_url = lambda w: config["viruses"][w.virus]["tree_url"]
+    log: "logs/fetch.{virus}.log"
     shell:
         """
         # Try Nextclade first
@@ -83,31 +79,39 @@ rule fetch:
         echo "✓ Generated GFF3 from tree metadata"
         """
 
+rule setup_default_weights:
+    output:
+        "{virus}/resources/weights.json"
+    params:
+        default_weights = {"VP1": {"default": 1}}
+    shell:
+        "mkdir -p $(dirname {output}) && python3 -c \"import json; json.dump({params.default_weights}, open('{output}', 'w'))\""
+
 rule calculate_optimal_scales:
     input: 
-        tree = rules.fetch.output.tree,                         ## auspice.json tree
-        weights = "../virus_{virus}/config/weights.json",       ## weights: if some mutations are more important than others (e.g., epitopes) put them in here
+        tree = "auspice/original_{virus}.json",                    ## auspice.json tree
+        weights = "{virus}/resources/weights.json",       ## weights: if some mutations are more important than others (e.g., epitopes) put them in here
     output:
-        scales = "../virus_{virus}/config/optimal_scales.json"  ## gives you the optimal parameters to run the algorithm with
-
+        scales = "{virus}/results/optimal_scales.json"  ## gives you the optimal parameters to run the algorithm with
     params:
-        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else ""
+        clade_key=lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else ""
+    log: "logs/optimal_scales.{virus}.log"
     shell:
         """
         python3 scripts/calculate_optimal_scales.py \
             --tree {input.tree} \
             {params.clade_key} \
             --weights {input.weights} \
-            --output {output.scales}
+            --output {output.scales} >> {log} 2>&1
         """
 
 rule setup_aliases:
     input:
         tree = "auspice/original_{virus}.json",
     output:
-        aliases = "../virus_{virus}/config/aliases_default.json",
+        aliases = "{virus}/resources/aliases_default.json",
     params:
-        clade_key = lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else "",
+        clade_key = lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else "",
     shell:
         """
         python3 scripts/extract_aliases_from_tree.py \
@@ -119,24 +123,24 @@ rule setup_aliases:
 rule suggest_new_clades:
     input: # define config paths
         tree = rules.fetch.output.tree,
-        aliases = ALIAS,
-        weights = "../virus_{virus}/config/weights.json",
-        params = "../virus_{virus}/config/suggestion_params.json",
+        aliases = lambda w: f"{w.virus}/resources/aliases_{config['defaults']['alias']}.json",
+        weights = "{virus}/resources/weights.json",
+        params = "{virus}/resources/suggestion_params.json",
         optimal = rules.calculate_optimal_scales.output.scales,
         
     params:
-        clade = "../virus_{virus}/new-clades.tsv",
-        gff = lambda wildcards: f"--gff ../virus_{wildcards.virus}/config/genome_annotation.gff3" if os.path.exists(f"../virus_{wildcards.virus}/config/genome_annotation.gff3") else "",    
-        clade_key=lambda wildcards: "--clade-key subclade" if re.search(r"(NA|HA)", wildcards.virus) else "", # flu has different key for clades
+        clade = "{virus}/new-clades.tsv",
+        gff = lambda w: f"--gff .{w.virus}/config/genome_annotation.gff3" if os.path.exists(f".{w.virus}/config/genome_annotation.gff3") else "",    
+        clade_key=lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else "", # flu has different key for clades
         
         ## params for the plots
         plots = "False",  # "True" to generate plots
         cutoff = [round(x, 1) for x in np.arange(0.5, 1.5, 0.1)],
         div_add = [round(x, 2) for x in np.arange(0.5, 1.2, 0.2)],
         min_size = [round(x, 1) for x in np.arange(10, 40, 10)],
-        bush_scale = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
-        bls_range = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
-        div_scale = lambda wildcards: load_config(wildcards.virus, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
+        bush_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
+        bls_range = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
+        div_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
     
     output:
         tree = "auspice/suggested_{virus}.json"
@@ -172,16 +176,16 @@ rule suggest_new_clades:
 
 rule visualization:
     input:
-        clades = "../virus_{virus}/new-clades_all.tsv",
+        clades = "{virus}/new-clades_all.tsv",
         tree = rules.suggest_new_clades.output.tree,
-        d = "../virus_{virus}/plots/",
-        params = "../virus_{virus}/config/suggestion_params.json",
+        d = "{virus}/plots/",
+        params = "{virus}/resources/suggestion_params.json",
     params:
         color = "True",
-        grid = "../virus_{virus}/plots/clade_table_names.tiff"
+        grid = "{virus}/plots/clade_table_names.tiff"
 
     output:
-        tiff = "../virus_{virus}/plots/violin_plots.tiff",
+        tiff = "{virus}/plots/violin_plots.tiff",
     shell:
         """
         Rscript scripts/visualize_clades.R --clades {input.clades} --tree {input.tree} \
@@ -193,7 +197,7 @@ rule extract_clade_ymls:
     input:
         json = rules.suggest_new_clades.output.tree,
     output:
-        clades = directory("../virus_{virus}/clades"),
+        clades = directory("{virus}/clades"),
     shell:
         """
         python3 scripts/extract_yml_from_json.py \
@@ -202,27 +206,27 @@ rule extract_clade_ymls:
         """
 
 # generate the markdown summary of the clade definitions
-rule summary:
-    input:
-        expand("clades/{file}", file=glob_wildcards("clades/{file}").file),
-        clades = rules.extract_clade_ymls.output.clades,
-    output:
-        md = "../virus_{virus}/.auto-generated/clades_{virus}.md", #".auto-generated/subclades_D68.md"
+# rule summary:
+#     input:
+#         expand("clades/{file}", file=glob_w("clades/{file}").file),
+#         clades = rules.extract_clade_ymls.output.clades,
+#     output:
+#         md = "{virus}/.auto-generated/clades_{virus}.md", #".auto-generated/subclades_D68.md"
         
-    shell:
-        """
-        python3 scripts/generate_markdown_summary.py \
-            --input-dir {input.clades} --virus {wildcards.virus} --file {output.md}
-        """
+#     shell:
+#         """
+#         python3 scripts/generate_markdown_summary.py \
+#             --input-dir {input.clades} --virus {w.virus} --file {output.md}
+        # """
 
 rule construct_tsv:
     input:
-        "../virus_{virus}/clades"
+        "{virus}/clades"
     output:
-        tsv = "../virus_{virus}/.auto-generated/subclades.tsv",
-        ptsv = "../virus_{virus}/.auto-generated/subclade-proposals.tsv",
-        clades = "../virus_{virus}/.auto-generated/clades.tsv",
-        clades_long = "../virus_{virus}/.auto-generated/clades-long.tsv"
+        tsv = "{virus}/.auto-generated/subclades.tsv",
+        ptsv = "{virus}/.auto-generated/subclade-proposals.tsv",
+        clades = "{virus}/.auto-generated/clades.tsv",
+        clades_long = "{virus}/.auto-generated/clades-long.tsv"
     shell:
         """
         python3 scripts/construct_tsv.py --input-dir {input} --output-tsv {output.tsv}
@@ -234,8 +238,8 @@ rule construct_tsv:
 rule clean:
     shell:
         """
-        rm -r ../*/.auto-generated \
-        ../*/clades/ \
-        ../*/subclades.tex \
+        rm -r .*/.auto-generated \
+        .*/clades/ \
+        .*/subclades.tex \
         auspice/*
         """

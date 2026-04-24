@@ -32,4 +32,6 @@ helper-scripts/
 
 #results
 */Rplots.pdf
-virus_*
+*/results/
+
+logs
