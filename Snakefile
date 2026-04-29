@@ -1,10 +1,15 @@
 import numpy as np
 import json
 import os
-import ipdb
+import re
 
 # Load config once
 configfile: "config.yaml"
+
+def load_config(virus, config_file="suggestion_params.json"):
+    """Load the JSON configuration file for a given virus."""
+    with open(os.path.join(f"{virus}", "results", config_file), "r") as json_file:
+        return json.load(json_file)
 
 v = config["viruses"]
 VIRUSES = list(v.keys())
@@ -24,8 +29,6 @@ rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
         expand("auspice/suggested_{virus}.json", virus=VIRUSES),
         # expand("{virus}/clades", virus=VIRUSES),
         # expand("{virus}/.auto-generated/clades_{virus}.md", virus=VIRUSES)
-    shell:
-        "mkdir -p logs {virus}/results {virus}/resources auspice"
 
 ruleorder: fetch > calculate_optimal_scales > suggest_new_clades
 
@@ -37,9 +40,11 @@ rule fetch:
     params:
         virus = "{virus}",
         tree_url = lambda w: config["viruses"][w.virus]["tree_url"]
-    log: "logs/fetch.{virus}.log"
+    log: 
+        "logs/fetch.{virus}.log"
     shell:
         """
+        mkdir -p logs {params.virus}/resources
         # Try Nextclade first
         echo "Attempting to fetch from Nextclade: enpen/enterovirus/{params.virus}"
         if nextclade dataset get --name "enpen/enterovirus/{params.virus}" --output-dir .nextclade_tmp 2>/dev/null; then
@@ -100,6 +105,7 @@ rule calculate_optimal_scales:
     log: "logs/optimal_scales.{virus}.log"
     shell:
         """
+        mkdir -p logs
         python3 scripts/calculate_optimal_scales.py \
             --tree {input.tree} \
             {params.clade_key} \
@@ -127,23 +133,16 @@ rule suggest_new_clades:
         tree = rules.fetch.output.tree,
         aliases = lambda w: f"{w.virus}/resources/aliases_{config['defaults']['alias']}.json",
         weights = "{virus}/resources/weights.json",
-        optimal = "{virus}/results/optimal_scales.json",
-
+        optimal = "{virus}/results/optimal_scales.json", 
+        config= "config.yaml",
     output:
         tree = "auspice/suggested_{virus}.json",
         clades = "{virus}/results/clade_counts.tsv",
 
     params:
-        # Single-value params (from config)
-        cutoff = lambda w: config["viruses"][w.virus]["cutoff"],
-        div_add = lambda w: config["viruses"][w.virus]["divergence_addition"],
-        div_scale = lambda w: config["viruses"][w.virus]["divergence_scale"],
-        min_size = lambda w: config["viruses"][w.virus]["min_size"],
-        bush_scale = lambda w: config["viruses"][w.virus]["bushiness_branch_scale"],
-        bls_range = lambda w: config["viruses"][w.virus]["branch_length_scale"],
-
+        virus = "{virus}",
         # Optional GFF
-        gff = lambda w: f"{w.virus}/resources/genome_annotation.gff3" \
+        gff = lambda w: f"--gff {w.virus}/resources/genome_annotation.gff3" \
                         if os.path.exists(f"{w.virus}/resources/genome_annotation.gff3") \
                         else "",
 
@@ -170,8 +169,9 @@ rule suggest_new_clades:
             echo "No GFF file provided - Attention the divergence scale will be calculated based on nucleotides only"; 
         fi
         python3 scripts/add_new_clades.py \
+            --virus {params.virus} \
             --tree {input.tree} \
-            --config {input.optimal} \
+            --config {input.config} \
             --aliases {input.aliases} \
             --weights {input.weights} \
             --clades {output.clades} \
@@ -186,12 +186,12 @@ rule suggest_new_clades:
             --bls_range {params.bls_range} \
             \
             --plots {params.plots} \
-            --cutoff-range {params.p_cutoff} \
-            --div_add-range {params.p_div_add} \
-            --div_scale-range {params.p_div_scale} \
-            --min_size-range {params.p_min_size} \
-            --bush_scale-range {params.p_bush_scale} \
-            --bls_range-range {params.p_bls_range}
+            --cutoff-sweep {params.p_cutoff} \
+            --div_add-sweep {params.p_div_add} \
+            --div_scale-sweep {params.p_div_scale} \
+            --min_size-sweep {params.p_min_size} \
+            --bush_scale-sweep {params.p_bush_scale} \
+            --bls_range-sweep {params.p_bls_range}
         
         """ #
 

@@ -19,10 +19,6 @@ import argparse
 import numpy as np
 from collections import defaultdict
 import pandas as pd
-import ipdb
-import Bio.Phylo
-from scipy.stats import scoreatpercentile
-
        
 def parse_tree_mutations(tree, weights=None): 
     """
@@ -204,7 +200,7 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
     
     # Use median as it's more robust to outliers than mean
     bushiness_scale = np.median(nt_muts_nonzero) if nt_muts_nonzero else 1.0
-    range_bushiness = scoreatpercentile(nt_muts_nonzero,[40,60])
+    range_bushiness = np.percentile(nt_muts_nonzero,[40,60])
 
     print(f"   - Total number of tips: {num_tips}")
     print(f"   - Total branches analyzed: {len(nt_muts)}")
@@ -218,8 +214,8 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
     # ipdb.set_trace()  # Debugging breakpoint
     aa_weights_nonzero = [x for x in aa_weights if x > 0]
 
-    branch_length_scale = scoreatpercentile(aa_weights_nonzero,90)
-    range_branch = scoreatpercentile(aa_weights_nonzero,[85,95])
+    branch_length_scale = np.percentile(aa_weights_nonzero,90)
+    range_branch = np.percentile(aa_weights_nonzero,[85,95])
         
     print(f"   - Branches with AA mutations: {len(aa_weights_nonzero)}")
     print(f"   - Mean weighted AA mutations per branch: {np.mean(aa_weights_nonzero):.2f}")

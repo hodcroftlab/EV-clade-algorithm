@@ -2,7 +2,6 @@
 #%%
 import yaml
 import glob
-import ipdb
 
 def generate_lineage_md(subclade, lineage, gene):
     lines = []

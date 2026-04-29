@@ -1,10 +1,10 @@
 import json, argparse
 from collections import defaultdict
 import numpy as np
-import ipdb
 from BCBio import GFF  # Requires Biopython
 import os
 import pandas as pd
+import yaml
 
 
 def is_nonterminal(n):
@@ -106,7 +106,7 @@ def assign_divergence(n, genes):
             for gene in genes:
                 bad_states = ['-', 'N'] if gene=='nuc' else ['X', '-']
                 c['div'] += len([x for x in c['branch_attrs']['mutations'].get(gene,[])
-                                if (x[0] not in bad_states) or (x[-1] not in bad_states)])
+                                if (x[0] not in bad_states) and (x[-1] not in bad_states)])
             assign_divergence(c, genes)
 
 
@@ -417,30 +417,23 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser(description="Assign clades to a tree")
     parser.add_argument('--tree', type=str, required=True, help="JSON file with tree")
-    parser.add_argument('--config', type=str, required=True, help="JSON file with config (optimal_scales.json)")
+    parser.add_argument('--config', type=str, required=True, help="config.yaml")
     parser.add_argument('--aliases', type=str, help="JSON file with aliases")
     parser.add_argument('--weights', type=str, required=True, help="JSON file with weights")
     parser.add_argument('--output', type=str, required=True, help="Output JSON tree")
     parser.add_argument('--clades', type=str, help="Output TSV with clade counts")
     parser.add_argument('--gff', type=str, default=None, help="GFF3 file for protein extraction")
-    
-    # Single-value params (for main run)
-    parser.add_argument('--cutoff', type=float, help="Clade cutoff threshold")
-    parser.add_argument('--div_add', type=float, help="Divergence addition factor")
-    parser.add_argument('--div_scale', type=float, help="Divergence scale")
-    parser.add_argument('--min_size', type=int, help="Minimum clade size")
-    parser.add_argument('--bush_scale', type=float, help="Bushiness branch scale")
-    parser.add_argument('--bls_range', type=float, help="Branch length scale")
-    parser.add_argument('--clade-key', type=str, default='clade_membership', help="Clade key in tree")
-    
+    parser.add_argument('--clade-key', type=str, default="subclade", help="Key for existing clades in node attributes")
+    parser.add_argument('--virus', type=str, help="Virus name for aliasing and config")
+        
     # Parameter sweep (optional, for --plots mode)
-    parser.add_argument('--plots', action='store_true', help="Run parameter sweep")
-    parser.add_argument('--cutoff-range', nargs='+', type=float, help="Cutoff range for sweep")
-    parser.add_argument('--div_add-range', nargs='+', type=float, help="Div_add range for sweep")
-    parser.add_argument('--div_scale-range', nargs='+', type=float, help="Div_scale range for sweep")
-    parser.add_argument('--min_size-range', nargs='+', type=int, help="Min_size range for sweep")
-    parser.add_argument('--bush_scale-range', nargs='+', type=float, help="Bush_scale range for sweep")
-    parser.add_argument('--bls_range-range', nargs='+', type=float, help="Bls_range range for sweep")
+    parser.add_argument('--plots', type=str, default="False", help="Run parameter sweep")
+    parser.add_argument('--cutoff-sweep', nargs='+', type=float, help="Cutoff range for sweep")
+    parser.add_argument('--div_add-sweep', nargs='+', type=float, help="Div_add range for sweep")
+    parser.add_argument('--div_scale-sweep', nargs='+', type=float, help="Div_scale range for sweep")
+    parser.add_argument('--min_size-sweep', nargs='+', type=int, help="Min_size range for sweep")
+    parser.add_argument('--bush_scale-sweep', nargs='+', type=float, help="Bush_scale range for sweep")
+    parser.add_argument('--bls_range-sweep', nargs='+', type=float, help="Bls_range range for sweep")
 
     args = parser.parse_args()
 
@@ -450,6 +443,16 @@ if __name__=="__main__":
     aliases = {}
     gff = args.gff
 
+    with open("config.yaml") as fh:
+        config = yaml.safe_load(fh)
+
+    cutoff = config["viruses"][args.virus]["cutoff"]
+    div_add = config["viruses"][args.virus]["divergence_addition"]
+    div_scale = config["viruses"][args.virus]["divergence_scale"]
+    min_size = config["viruses"][args.virus]["min_size"]
+    bush_scale = config["viruses"][args.virus]["bushiness_branch_scale"]
+    bls_range = config["viruses"][args.virus]["branch_length_scale"]
+
     if args.aliases:
         add_aliases(args.aliases, aliases)
     reverse_aliases = {v:k for k,v in aliases.items()}
@@ -458,13 +461,10 @@ if __name__=="__main__":
     with open(args.weights) as fh:
         weights = json.load(fh)
 
-    with open(args.config) as fh:
-        config = json.load(fh)
-
     with open(args.tree) as fh:
         data = json.load(fh)
 
-    proteins = config["proteins"]
+    proteins = config["defaults"]["proteins"]
     if not proteins:
         # ipdb.set_trace()
         if args.gff and os.path.isfile(args.gff):
@@ -476,13 +476,13 @@ if __name__=="__main__":
     # ipdb.set_trace()
     T = data["tree"]
     dealias(T, reverse_aliases, old_clade_key)
-    T, hierarchy = get_tree(T, max_date=config["max_date"], min_date=config["min_date"],
+    T, hierarchy = get_tree(T, max_date=config["defaults"]["max_date"], min_date=config["defaults"]["min_date"],
                             new_key=new_clade_key, old_key=old_clade_key, branch_label=branch_label,
                             proteins=proteins)
 
     # nucleotide branch length excluding gaps and N
     branch_length_function = lambda x:len([y for y in x['branch_attrs']['mutations'].get('nuc',[])
-                                           if y[-1] not in ['N', '-'] and y[0] not in ['N', '-']])/config["bushiness_branch_scale"]
+                                           if y[-1] not in ['N', '-'] and y[0] not in ['N', '-']])/bush_scale
     calc_phylo_score(T, branch_length_function, ignore_backbone=True)
     bushiness_scale = calc_phylo_scale(T)
     print("phylo_score_scale", bushiness_scale)
@@ -490,13 +490,13 @@ if __name__=="__main__":
     # compute aggregate score from branches and phylo/bushiness
     assign_score(T, score, weights=weights,
                  bushiness_scale=bushiness_scale, ignore_backbone=True,
-                 proteins=proteins, branch_length_scale=config["branch_length_scale"])
+                 proteins=proteins, branch_length_scale=bls_range)
 
     # assign clades while also taking into account the divergence, modifies hierarchy and new_clades in place
     new_clades = {}
     assign_new_clades_to_branches(T, hierarchy, new_clade_key,
-        new_clades=new_clades, cutoff=config["cutoff"], divergence_addition=config["divergence_addition"],
-        divergence_base=0.0, divergence_scale=config["divergence_scale"], min_size=config["min_size"])
+        new_clades=new_clades, cutoff=cutoff, divergence_addition=div_add,
+        divergence_base=0.0, divergence_scale=div_scale, min_size=min_size)
 
     # # copy over old clades to count
     count_old = set()
@@ -532,7 +532,7 @@ if __name__=="__main__":
     data['meta']['colorings'].append({'key':"bushiness_raw", 'type':'continuous', 'title':"Bushiness (raw)"}) #  pylo_score_raw
     data['meta']['colorings'].append({'key':"bushiness", 'type':'continuous', 'title':"Bushiness score"}) #  pylo_score
     data['meta']['colorings'].append({'key':"branch_score", 'type':'continuous', 'title':"Branch score"})
-    data['meta']['filters'].append('new_clade')
+    data['meta']['filters'].append({'key':new_clade_key})
 
     with open(args.output, 'w') as fh:
         json.dump(data, fh, indent=0)
@@ -546,17 +546,17 @@ if __name__=="__main__":
         all_dfs = []
 
         param_combos = list(product(
-            args.cutoff,
-            args.div_add,
-            args.div_scale,
-            args.bls_range,
-            args.min_size,
-            args.bush_scale
+            args.cutoff_sweep,
+            args.div_add_sweep,
+            args.div_scale_sweep,
+            args.bls_range_sweep,
+            args.min_size_sweep,
+            args.bush_scale_sweep
         ))
         # ipdb.set_trace()
 
         for cutoff, div_add, div, bls, size, bush in tqdm(param_combos, desc="Sweeping parameters"):
-            cfg = copy.deepcopy(config)
+            cfg = copy.deepcopy(config["viruses"][args.virus])
             cfg["cutoff"] = cutoff
             cfg["divergence_addition"] = div_add
             cfg["divergence_scale"] = div

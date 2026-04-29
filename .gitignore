@@ -35,3 +35,5 @@ helper-scripts/
 */results/
 
 logs
+
+count_muts.R
