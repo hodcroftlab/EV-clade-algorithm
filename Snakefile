@@ -6,13 +6,14 @@ import ipdb
 # Load config once
 configfile: "config.yaml"
 
-VIRUSES = config["viruses"]
+v = config["viruses"]
+VIRUSES = list(v.keys())
+print(f"Running pipeline for viruses: {list(v.keys())}")
 
 wildcard_constraints:
-    virus=VIRUSES
+    virus="|".join(VIRUSES)
 
-
-# ! adjust the `tree_url` in suggestion_params.json
+# ! adjust the `tree_url` in config.yaml
 # ! define some weights (e.g. BC, DE loop in VP1) in weights.json
 # ! define the current nomenclature in aliases.json
 
@@ -23,9 +24,10 @@ rule all: # order: fetch > calculate_optimal_scales > suggest_new_clades
         expand("auspice/suggested_{virus}.json", virus=VIRUSES),
         # expand("{virus}/clades", virus=VIRUSES),
         # expand("{virus}/.auto-generated/clades_{virus}.md", virus=VIRUSES)
+    shell:
+        "mkdir -p logs {virus}/results {virus}/resources auspice"
 
 ruleorder: fetch > calculate_optimal_scales > suggest_new_clades
-
 
 ## if you provide a tree in json format, this step will be skipped.
 rule fetch:
@@ -125,25 +127,41 @@ rule suggest_new_clades:
         tree = rules.fetch.output.tree,
         aliases = lambda w: f"{w.virus}/resources/aliases_{config['defaults']['alias']}.json",
         weights = "{virus}/resources/weights.json",
-        params = "{virus}/resources/suggestion_params.json",
-        optimal = rules.calculate_optimal_scales.output.scales,
-        
+        optimal = "{virus}/results/optimal_scales.json",
+
+    output:
+        tree = "auspice/suggested_{virus}.json",
+        clades = "{virus}/results/clade_counts.tsv",
+
     params:
+        # Single-value params (from config)
+        cutoff = lambda w: config["viruses"][w.virus]["cutoff"],
+        div_add = lambda w: config["viruses"][w.virus]["divergence_addition"],
+        div_scale = lambda w: config["viruses"][w.virus]["divergence_scale"],
+        min_size = lambda w: config["viruses"][w.virus]["min_size"],
+        bush_scale = lambda w: config["viruses"][w.virus]["bushiness_branch_scale"],
+        bls_range = lambda w: config["viruses"][w.virus]["branch_length_scale"],
+
+        # Optional GFF
+        gff = lambda w: f"{w.virus}/resources/genome_annotation.gff3" \
+                        if os.path.exists(f"{w.virus}/resources/genome_annotation.gff3") \
+                        else "",
+
         clade = "{virus}/new-clades.tsv",
-        gff = lambda w: f"--gff .{w.virus}/config/genome_annotation.gff3" if os.path.exists(f".{w.virus}/config/genome_annotation.gff3") else "",    
-        clade_key=lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else "", # flu has different key for clades
-        
+
+        # Clade key (flu-specific, skip for enteroviruses)
+        clade_key = lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else "",        
+        defaults = config["defaults"],
+
         ## params for the plots
         plots = "False",  # "True" to generate plots
-        cutoff = [round(x, 1) for x in np.arange(0.5, 1.5, 0.1)],
-        div_add = [round(x, 2) for x in np.arange(0.5, 1.2, 0.2)],
-        min_size = [round(x, 1) for x in np.arange(10, 40, 10)],
-        bush_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale"), #[5,10,100],
-        bls_range = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("branch_length_scale"), #[2,10,20],
-        div_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("divergence_scale"), #[0.1, 1, 5, 10, 20],
+        p_cutoff = config["sweep"]["cutoff"],
+        p_div_add = config["sweep"]["divergence_addition"],
+        p_min_size = config["sweep"]["min_size"],
+        p_bush_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("bushiness_branch_scale", config["sweep"]["bushiness_branch_scale"]), 
+        p_bls_range = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("branch_length_scale", config["sweep"]["branch_length_scale"]), 
+        p_div_scale = lambda w: load_config(w.virus, "optimal_scales.json")["optimal_scales"].get("divergence_scale", config["sweep"]["divergence_scale"]), 
     
-    output:
-        tree = "auspice/suggested_{virus}.json"
     shell:
         """
         if [ -n "{params.gff}" ]; then 
@@ -153,21 +171,27 @@ rule suggest_new_clades:
         fi
         python3 scripts/add_new_clades.py \
             --tree {input.tree} \
-            --config {input.params} \
+            --config {input.optimal} \
             --aliases {input.aliases} \
             --weights {input.weights} \
-            --clades {params.clade} \
+            --clades {output.clades} \
             --output {output.tree} \
             {params.gff} \
             {params.clade_key} \
-            \
-            --plots {params.plots} \
             --cutoff {params.cutoff} \
             --div_add {params.div_add} \
             --div_scale {params.div_scale} \
             --min_size {params.min_size} \
             --bush_scale {params.bush_scale} \
-            --bls_range {params.bls_range}
+            --bls_range {params.bls_range} \
+            \
+            --plots {params.plots} \
+            --cutoff-range {params.p_cutoff} \
+            --div_add-range {params.p_div_add} \
+            --div_scale-range {params.p_div_scale} \
+            --min_size-range {params.p_min_size} \
+            --bush_scale-range {params.p_bush_scale} \
+            --bls_range-range {params.p_bls_range}
         
         """ #
 

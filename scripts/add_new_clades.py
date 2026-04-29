@@ -416,23 +416,34 @@ def extract_node_stats(root):
 if __name__=="__main__":
 
     parser = argparse.ArgumentParser(description="Assign clades to a tree")
-    parser.add_argument('--tree', type=str, help="JSON file with config")
-    parser.add_argument('--config', type=str, help="JSON file with config")
+    parser.add_argument('--tree', type=str, required=True, help="JSON file with tree")
+    parser.add_argument('--config', type=str, required=True, help="JSON file with config (optimal_scales.json)")
     parser.add_argument('--aliases', type=str, help="JSON file with aliases")
-    parser.add_argument('--weights', type=str, help="JSON file with weights")
-    parser.add_argument('--output', default='recladed_tree.json')
-    parser.add_argument('--clades', type=str)
-    parser.add_argument('--plots', type=str, help="Run parameter grid and output clade tables")
-    parser.add_argument('--gff', type=str, help="GFF3 file for extracting protein names", default=None)
-    parser.add_argument('--cutoff', nargs='+', type=float)
-    parser.add_argument('--div_add', nargs='+', type=float)
-    parser.add_argument('--div_scale', nargs='+', type=float)
-    parser.add_argument('--min_size', nargs='+', type=float)
-    parser.add_argument('--bush_scale', nargs='+', type=float)
-    parser.add_argument('--bls_range', nargs='+', type=float)
-    parser.add_argument('--clade-key', type=str, default='clade_membership')
+    parser.add_argument('--weights', type=str, required=True, help="JSON file with weights")
+    parser.add_argument('--output', type=str, required=True, help="Output JSON tree")
+    parser.add_argument('--clades', type=str, help="Output TSV with clade counts")
+    parser.add_argument('--gff', type=str, default=None, help="GFF3 file for protein extraction")
+    
+    # Single-value params (for main run)
+    parser.add_argument('--cutoff', type=float, help="Clade cutoff threshold")
+    parser.add_argument('--div_add', type=float, help="Divergence addition factor")
+    parser.add_argument('--div_scale', type=float, help="Divergence scale")
+    parser.add_argument('--min_size', type=int, help="Minimum clade size")
+    parser.add_argument('--bush_scale', type=float, help="Bushiness branch scale")
+    parser.add_argument('--bls_range', type=float, help="Branch length scale")
+    parser.add_argument('--clade-key', type=str, default='clade_membership', help="Clade key in tree")
+    
+    # Parameter sweep (optional, for --plots mode)
+    parser.add_argument('--plots', action='store_true', help="Run parameter sweep")
+    parser.add_argument('--cutoff-range', nargs='+', type=float, help="Cutoff range for sweep")
+    parser.add_argument('--div_add-range', nargs='+', type=float, help="Div_add range for sweep")
+    parser.add_argument('--div_scale-range', nargs='+', type=float, help="Div_scale range for sweep")
+    parser.add_argument('--min_size-range', nargs='+', type=int, help="Min_size range for sweep")
+    parser.add_argument('--bush_scale-range', nargs='+', type=float, help="Bush_scale range for sweep")
+    parser.add_argument('--bls_range-range', nargs='+', type=float, help="Bls_range range for sweep")
 
     args = parser.parse_args()
+
     new_clade_key = 'new-clade'
     old_clade_key = args.clade_key
     branch_label = 'clade'
