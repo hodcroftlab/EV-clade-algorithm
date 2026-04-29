@@ -423,7 +423,7 @@ if __name__=="__main__":
     parser.add_argument('--output', type=str, required=True, help="Output JSON tree")
     parser.add_argument('--clades', type=str, help="Output TSV with clade counts")
     parser.add_argument('--gff', type=str, default=None, help="GFF3 file for protein extraction")
-    parser.add_argument('--clade-key', type=str, default="subclade", help="Key for existing clades in node attributes")
+    parser.add_argument('--clade-key', type=str, default='clade_membership', help="Key for existing clades in node attributes")
     parser.add_argument('--virus', type=str, help="Virus name for aliasing and config")
         
     # Parameter sweep (optional, for --plots mode)
@@ -439,6 +439,7 @@ if __name__=="__main__":
 
     new_clade_key = 'new-clade'
     old_clade_key = args.clade_key
+    print("Using old clade key:", old_clade_key)
     branch_label = 'clade'
     aliases = {}
     gff = args.gff

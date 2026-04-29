@@ -137,8 +137,6 @@ rule suggest_new_clades:
         config= "config.yaml",
     output:
         tree = "auspice/suggested_{virus}.json",
-        clades = "{virus}/results/clade_counts.tsv",
-
     params:
         virus = "{virus}",
         # Optional GFF
@@ -146,12 +144,11 @@ rule suggest_new_clades:
                         if os.path.exists(f"{w.virus}/resources/genome_annotation.gff3") \
                         else "",
 
-        clade = "{virus}/new-clades.tsv",
+        clade_file = "{virus}/new-clades.tsv",
 
         # Clade key (flu-specific, skip for enteroviruses)
         clade_key = lambda w: "--clade-key subclade" if re.search(r"(NA|HA)", w.virus) else "",        
         defaults = config["defaults"],
-
         ## params for the plots
         plots = "False",  # "True" to generate plots
         p_cutoff = config["sweep"]["cutoff"],
@@ -174,16 +171,10 @@ rule suggest_new_clades:
             --config {input.config} \
             --aliases {input.aliases} \
             --weights {input.weights} \
-            --clades {output.clades} \
+            --clades {params.clade_file} \
             --output {output.tree} \
-            {params.gff} \
             {params.clade_key} \
-            --cutoff {params.cutoff} \
-            --div_add {params.div_add} \
-            --div_scale {params.div_scale} \
-            --min_size {params.min_size} \
-            --bush_scale {params.bush_scale} \
-            --bls_range {params.bls_range} \
+            {params.gff} \
             \
             --plots {params.plots} \
             --cutoff-sweep {params.p_cutoff} \
