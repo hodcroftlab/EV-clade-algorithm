@@ -18,7 +18,6 @@ import json
 import argparse
 import numpy as np
 from collections import defaultdict
-import pandas as pd
        
 def parse_tree_mutations(tree, weights=None): 
     """
@@ -59,10 +58,12 @@ def parse_tree_mutations(tree, weights=None):
             for mut in protein_muts:
                 if mut[-1] in ['-', 'X']: continue # Skip deletions and unknown AAs
                 pos = str(mut[1:-1])  # Extract position number
-                aa_weight += w[pos] if pos in w else w.get("default", 1)
+                pos_int = int(pos)
+                aa_weight += w.get(pos_int, w.get(pos, w.get("default", 1)))
+                # aa_weight += w[pos] if pos in w else w.get("default", 1)
 
         if node["name"] == 'NODE_0000000' and nt_count > 0:
-            # ipdb.set_trace()  # Debugging breakpoint
+            
             print(f"""\033[91m
     The root node has {nt_count} nucleotide mutations. Was the tree exported from Nextclade?
     Root mutations will be excluded here.
@@ -193,8 +194,6 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
     print("\n1. Calculating bushiness_branch_scale...")
     nt_muts, aa_weights, branches = parse_tree_mutations(tree, weights)
 
-    
-    
     # Remove branches with zero mutations to avoid skewing averages
     nt_muts_nonzero = [x for x in nt_muts if x > 0]
     
@@ -245,6 +244,7 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
     else:
         # Fallback if no clades are present
         divergence_scale = 4.0  # Default from original algorithm
+        range_divergence = [divergence_scale, divergence_scale]  # no range, as it is the orginal
         print(f"   - No existing clades found, using default: {divergence_scale}")
     
     # Compile results
@@ -255,18 +255,21 @@ def calculate_optimal_scales(tree, weights=None, key='clade_membership'):
             "divergence_scale": round(divergence_scale, 1)
         },
         "empirical_data": {
-            "Tree size (no. tips)": num_tips,
-            "Total no. of branches": len(nt_muts),
-            "Branches with NT mutations": len(nt_muts_nonzero),
-            "Branches with AA mutations": len(aa_weights_nonzero),
-            "Mean NT muts per branch": round(np.mean(nt_muts_nonzero), 2) if nt_muts_nonzero else 0,
-            "Median NT muts per branch": round(np.median(nt_muts_nonzero), 2) if nt_muts_nonzero else 0,
-            "Mean weighted AA muts per branch": round(np.mean(aa_weights_nonzero), 2) if aa_weights_nonzero else 0,
-            "Median weighted AA muts per branch": round(np.median(aa_weights_nonzero), 2) if aa_weights_nonzero else 0,
-            "Within-clade divergence pairs": len(within_divs) if within_divs else 0,
-            "Between-clade divergence pairs": len(between_divs) if between_divs else 0,
-            "Median within-clade divergence": round(np.median(within_divs), 2) if within_divs else None,
-            "Median between-clade divergence": round(np.median(between_divs), 2) if between_divs else None
+            "tree_num_tips": num_tips,
+            "num_branches_total": len(nt_muts),
+            "num_branches_with_nt_mutations": len(nt_muts_nonzero),
+            "num_branches_with_aa_mutations": len(aa_weights_nonzero),
+
+            "nt_mutations_per_branch_mean": round(np.mean(nt_muts_nonzero), 2) if nt_muts_nonzero else 0,
+            "nt_mutations_per_branch_median": round(np.median(nt_muts_nonzero), 2) if nt_muts_nonzero else 0,
+
+            "aa_weight_per_branch_mean": round(np.mean(aa_weights_nonzero), 2) if aa_weights_nonzero else 0,
+            "aa_weight_per_branch_median": round(np.median(aa_weights_nonzero), 2) if aa_weights_nonzero else 0,
+
+            "within_clade_divergence_num_pairs": len(within_divs) if within_divs else 0,
+            "between_clade_divergence_num_pairs": len(between_divs) if between_divs else 0,
+            "within_clade_divergence_median": round(np.median(within_divs), 2) if within_divs else None,
+            "between_clade_divergence_median": round(np.median(between_divs), 2) if between_divs else None,
         },
         "explanation": {
             "bushiness_branch_scale": "Based on median nucleotide mutations per branch. This normalizes the phylogenetic bushiness score.",
@@ -293,6 +296,7 @@ def main():
                        help='Output JSON file for calculated scales')
     parser.add_argument('--clade-key', default='clade_membership',
                        help='Key for existing clade annotations in tree (default: clade_membership)')
+    parser.add_argument('--recommend', default="True", type=str, help="Enable recommendations.",)
     
     args = parser.parse_args()
     
@@ -316,11 +320,45 @@ def main():
     print(f"key for clade annotations: {args.clade_key}")
     results,ranges = calculate_optimal_scales(tree, weights, key=args.clade_key)
     
-    # Save results
-    print(f"\nSaving results to: {args.output}")
     with open(args.output, 'w') as f:
         json.dump(results, f, indent=2)
     
+    print("\n" + "="*80)
+    print("SUMMARY STATISTICS")
+    print("="*80)
+    for stat, value in results['empirical_data'].items():
+        if value is not None:
+            print(f"{stat:35}: {value}")
+
+    if args.recommend == "True":
+        print("\n" + "="*80)
+        print("RECOMMENDATIONS")
+        print("="*80)
+        print("To create fewer and larger clusters:")
+        print("  - Increase min_size")
+
+        print("\nTo reduce the total number of clusters:")
+        print("  - Increase cutoff. Check the coloring `clade score` to find the optimal range (usually between 1.0-1.5)")
+        print("  - Decrease divergence_addition. A recommended range is between 0.5-1.0.")
+        
+        print("\nTo create more clusters near the tips:")
+        print("  Set a `min_date`. Clusters formed before this date will be considered “dead” and won’t receive new names.")
+
+        
+        print("\nTo focus more on AA-based clades:")
+        print("  - Set divergence_addition=1.0")
+        print("  - Decrease divergence_scale")
+        print("  - Decrease branch_length_scale")
+        
+        print("\nTo focus more on NT-based clades:")
+        print("  - Decrease divergence_addition")
+        print("  - Decrease bushiness_branch_scale")
+        print("  - Increase divergence_scale")
+        print("  - Increase branch_length_scale")
+        print("  Alternatively, specify `proteins: ['nuc']` in config.yaml")
+
+        print("\nPlease add or adapt the parameters in the config.yaml file.")
+
     # Print summary
     print("\n" + "="*80)
     print("OPTIMAL SCALE PARAMETERS")
@@ -331,12 +369,11 @@ def main():
         i+=1
     
     print("\n" + "="*80)
-    print("SUMMARY STATISTICS")
+    print("bushiness_branch_scale   : Based on median nucleotide mutations per branch. This normalizes the phylogenetic bushiness score.")
+    print("branch_length_scale      : Based on median weighted amino acid mutations per branch. This normalizes the branch mutation score.")
+    print("divergence_scale         : Based on difference between median inter- and intra-clade divergence. This helps distinguish meaningful clade boundaries. Range equals zero if no clades are provided")
     print("="*80)
-    for stat, value in results['empirical_data'].items():
-        if value is not None:
-            print(f"{stat:35}: {value}")
-    
+
     print(f"\nComplete results saved to: {args.output}")
 
 
