@@ -1,13 +1,23 @@
 # config.yaml - all virus parameters in one place
 # Users edit ONE file; no per-virus JSON configs needed
 
-# Global defaults (fallback if virus-specific not set)
+# Global defaults
 defaults:
+  local_tree: true
   max_date: 2026-12-31
   min_date: 2020-01-01
   date_range_type: "tip_date"
   alias: "default" # default or manual
   proteins: []
+  weights:
+    VP1:
+      default: 1
+  clade_key: "clade_membership" # name of metadata field to store clade membership in auspice JSON (e.g. "clade_membership")
+
+# Virus-specific parameters (overrides global defaults)
+## Structure:  
+#      <virus>: (virus_name)
+#          <parameters> (used for algorithm)
 
 viruses:
   ev-d68:
@@ -42,12 +52,12 @@ viruses:
     
   cva10:
     tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/coxsackievirus/A10/whole-genome"
-    cutoff: 1.05
-    divergence_addition: 0.15
-    divergence_scale: 3
-    min_size: 6
-    bushiness_branch_scale: 5
-    branch_length_scale: 5
+    cutoff: 1.1
+    divergence_addition: 0.5
+    min_size: 10
+    bushiness_branch_scale: 25
+    # branch_length_scale: 10
+    # divergence_scale: 10
 
 # Parameter sweep ranges (for sensitivity analysis)
 sweep:
