@@ -298,6 +298,7 @@ def full_clade_to_short_name(full_clade, aliases):
     # Track the highest letter/number used for each level
     used_names = {}
     for key in aliases.keys():
+        
         top_level = key[0]  # Get the first element of the tuple
         if top_level not in used_names:
             used_names[top_level] = key[1] if len(key)>1 else 0
@@ -425,6 +426,7 @@ if __name__=="__main__":
     parser.add_argument('--gff', type=str, default=None, help="GFF3 file for protein extraction")
     parser.add_argument('--clade-key', type=str, default='clade_membership', help="Key for existing clades in node attributes")
     parser.add_argument('--virus', type=str, help="Virus name for aliasing and config")
+    parser.add_argument('--optimal-scales', type=str, help="JSON file with recommended scaling parameters")
         
     # Parameter sweep (optional, for --plots mode)
     parser.add_argument('--plots', type=str, default="False", help="Run parameter sweep")
@@ -444,15 +446,38 @@ if __name__=="__main__":
     aliases = {}
     gff = args.gff
 
-    with open("config.yaml") as fh:
+    with open(args.config) as fh:
         config = yaml.safe_load(fh)
 
-    cutoff = config["viruses"][args.virus]["cutoff"]
-    div_add = config["viruses"][args.virus]["divergence_addition"]
-    div_scale = config["viruses"][args.virus]["divergence_scale"]
-    min_size = config["viruses"][args.virus]["min_size"]
-    bush_scale = config["viruses"][args.virus]["bushiness_branch_scale"]
-    bls_range = config["viruses"][args.virus]["branch_length_scale"]
+    with open(args.optimal_scales) as fh:
+        optimal = yaml.safe_load(fh)
+
+    virus_cfg = config.get("viruses", {}).get(args.virus, {})
+    opt = optimal.get("optimal_scales", {})
+    defaults = config.get("defaults", {})
+
+
+    # Prefer per-virus config; if not available, fall back to optimal scales from config; if not available, fall back to defaults
+    cutoff = virus_cfg.get("cutoff")
+    if cutoff is None:
+        cutoff = defaults.get("cutoff", 1.0)
+
+    div_add = virus_cfg.get("divergence_addition")
+    if div_add is None:
+        div_add = defaults.get("divergence_addition", 1.0)
+
+    min_size = virus_cfg.get("min_size")
+    if min_size is None:
+        min_size = defaults.get("min_size", 10)
+        
+
+    bush_scale = virus_cfg.get("bushiness_branch_scale", opt.get("bushiness_branch_scale"))
+    bls_range = virus_cfg.get("branch_length_scale", opt.get("branch_length_scale"))
+    div_scale = virus_cfg.get("divergence_scale", opt.get("divergence_scale"))
+
+    # bush_scale = virus_cfg.get("bushiness_branch_scale", opt.get("bushiness_branch_scale", config.get("defaults", {}).get("bushiness_branch_scale")))
+    # bls_range = virus_cfg.get("branch_length_scale", opt.get("branch_length_scale", config.get("defaults", {}).get("branch_length_scale")))
+    # div_scale = virus_cfg.get("divergence_scale", opt.get("divergence_scale", config.get("defaults", {}).get("divergence_scale")))
 
     if args.aliases:
         add_aliases(args.aliases, aliases)
@@ -557,7 +582,7 @@ if __name__=="__main__":
         # ipdb.set_trace()
 
         for cutoff, div_add, div, bls, size, bush in tqdm(param_combos, desc="Sweeping parameters"):
-            cfg = copy.deepcopy(config["viruses"][args.virus])
+            cfg = copy.deepcopy(virus_cfg)
             cfg["cutoff"] = cutoff
             cfg["divergence_addition"] = div_add
             cfg["divergence_scale"] = div
@@ -567,7 +592,7 @@ if __name__=="__main__":
 
             T_tmp = copy.deepcopy(data["tree"])
             dealias(T_tmp, reverse_aliases, old_clade_key)
-            T_tmp, hierarchy = get_tree(T_tmp, max_date=cfg["max_date"], min_date=cfg["min_date"],
+            T_tmp, hierarchy = get_tree(T_tmp, max_date=config["defaults"]["max_date"], min_date=config["defaults"]["min_date"],
                                         new_key=new_clade_key, old_key=old_clade_key, branch_label=branch_label)
 
             # nucleotide branch length excluding gaps and N
