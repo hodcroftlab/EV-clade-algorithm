@@ -255,7 +255,7 @@ There is an additional "one-daughter" safeguard:
 
 ### Divergence reset at breakpoints
 
-When a breakpoint is designated, divergence is conceptually "reset" for downstream evaluation by updating the base divergence reference used for \(\Delta\).
+When a breakpoint is designated, divergence is conceptually "reset" for downstream evaluation by updating the base divergence reference used for $\Delta$.
 
 ---
 
