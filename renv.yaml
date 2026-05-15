@@ -1,0 +1,40 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # --- Core runtime ---
+  - python>=3.10
+  - snakemake-minimal>=7
+  - pip
+
+  # --- Python libs used by scripts ---
+  - numpy
+  - pandas
+  - pyyaml
+  - scipy
+  - tqdm
+  - biopython
+  - bcbio-gff
+
+  # --- CLI utilities used in Snakefile ---
+  - curl
+  - jq
+
+  # Optional but recommended for fetching datasets
+  - nextclade>=3
+
+  # Optional but recommended for local viewing
+  - auspice>=2
+
+  # --- R for scripts/visualize_clades.R ---
+  - r-base>=4.2
+  - r-tidyverse
+  - r-argparse
+  - r-rjson
+  - r-scales
+  - r-ggpubr
+  - r-car
+  - r-plotly
+  - r-ggbeeswarm
+  - r-corrplot
+  - r-viridis
