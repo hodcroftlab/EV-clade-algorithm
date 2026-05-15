@@ -299,16 +299,16 @@ rule suggest_new_clades:
         config= "config.yaml", 
     output:
         tree = "auspice/suggested_{virus}.json",
+        clade_file = "{virus}/results/new-clades.tsv",
     params:
         virus = "{virus}",
         # Optional GFF
         gff=lambda w: gff_arg_if_present(w.virus),
 
-        clade_file = "{virus}/results/new-clades.tsv",
-
         # Clade key (flu-specific, skip for enteroviruses)
         clade_key=lambda w: clade_key_arg(w.virus),
         defaults = config["defaults"],
+
         ## params for the plots
         plots = "True",  # "True" to generate plots
         p_cutoff = config["sweep"]["cutoff"],
@@ -337,7 +337,7 @@ rule suggest_new_clades:
             {params.gff} \
             \
             --plots {params.plots} \
-            --clades {params.clade_file} \
+            --clades {output.clade_file} \
             --cutoff-sweep {params.p_cutoff} \
             --div_add-sweep {params.p_div_add} \
             --div_scale-sweep {params.p_div_scale} \
@@ -355,7 +355,7 @@ rule suggest_new_clades:
 
 rule visualization:
     input:
-        clades = "{virus}/results/new-clades_all.tsv",
+        clades = "{virus}/results/new-clades.tsv",
         tree = rules.suggest_new_clades.output.tree,
         config = "config.yaml",
     params:
