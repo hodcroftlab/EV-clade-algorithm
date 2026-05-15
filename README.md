@@ -1,132 +1,244 @@
-# EV-Clade-Algorithm
+# EV-clade-algorithm
 
-Automated clade assignment for enteroviruses (EV-D68, EV-A71, CVA16, etc.) based on phylogenetic structure, mutation patterns, and sequence divergence.
+Suggest candidate clade breakpoints and clade labels for non‑polio enteroviruses (EV‑D68, EV‑A71, CV‑A16, CV‑A10, …) from **Nextstrain Auspice JSON trees**.
 
-Adapts the [influenza clade-suggestion-algorithm](https://github.com/influenza-clade-nomenclature/clade-suggestion-algorithm) for non-polio enteroviruses.
+This repo adapts the influenza clade-suggestion approach to enteroviruses using a combined score from:
 
-## What it does
+- **tree growth / structure** (“bushiness”, LBI-like),
+- **amino-acid change patterns** (weighted substitutions),
+- **divergence since last clade breakpoint** (saturating contribution).
 
-- Analyzes Nextstrain phylogenetic trees (JSON format)
-- Scores branches combining:
-  - **Phylogenetic signal** (bushiness: number of downstream tips with exponential decay)
-  - **Amino acid mutations** (weighted by position: epitope sites > other sites)
-  - **Sequence divergence** (cumulative AA changes since last clade breakpoint)
-- Suggests new clades when combined score exceeds threshold
-- Outputs tree with clade assignments ready for Nextstrain visualization
+> This is a *clade suggestion* tool: it proposes breakpoints and labels for review. It does not claim a globally optimal partition.
 
-## Structure
+---
 
-```bash
-# please make sure the directory structure is as follows:
-enterovirus-clade-nomenclature/
-├── {virus}/
-│   ├── config/
-│   │   ├── suggestion_params.json
+## Repository layout (current)
+
+The repo is organized with one directory per virus:
+
+```text
+EV-clade-algorithm/
+├── Snakefile
+├── config.yaml
+├── auspice/
+│   ├── original_{virus}.json
+│   └── suggested_{virus}.json
+├── scripts/
+│   ├── add_new_clades.py        # main algorithm (called by Snakefile)
+│   ├── calculate_optimal_scales.py     # scale recommendations
+│   ├── extract_aliases_from_tree.py    # optional: derive aliases from an annotated tree
+│   ├── extract_yml_from_json.py        # export clade definitions to YAML
+│   ├── construct_tsv.py                # build TSVs from exported YAMLs
+│   └── visualize_clades.R              # optional plots
+├── ev-d68/
+│   ├── resources/
 │   │   ├── weights.json
-│   │   ├── aliases.json
-│   │   ├── genome_annotation.gff3
-│   ├── CHANGELOG.md
-│   ├── README.md
-├── clade-suggestion-algorithm/
-│   ├── auspice/
-│   ├── scripts/
-│   │   ├── add_new_clades.py
-│   │   ├── calculate_optimal_scales.py
-│   │   ├── construct_tsv.py
-│   │   ├── extract_yml_from_json.py
-│   │   ├── generate_markdown_summary.py
-│   │   ├── visualize_clades.R
-│   ├── Snakefile
-│   ├── README.md
+│   │   ├── aliases_*.json
+│   │   └── genome_annotation.gff3      # optional (if not fetched/generated)
+│   └── results/
+│       ├── original_ev-d68.clades.json
+│       ├── optimal_scales.json
+│       ├── new-clades.tsv
+│       └── (plots/)
+├── ev-a71/
+├── cva16/
+└── cva10/
 ```
+
+(Directory names must match the keys under `viruses:` in `config.yaml`.)
+
+---
 
 ## Quick start
 
-### Single run
+### 0) Install dependencies
+
+This repo uses a `renv.yaml` conda/ micromamba environment with Python + R dependencies and required CLI tools.
 
 ```bash
-snakemake clade-suggestion-algorithm/Snakefile all
+micromamba env create -f renv.yaml -n clade
+micromamba activate clade
 ```
 
-## Key configuration parameters
+### 1) Configure viruses + defaults (`config.yaml`)
 
-| Parameter | Meaning | Typical range | Notes |
-|-----------|---------|--------------|-------|
-| `cutoff` | Score threshold for new clade | 0.5–2.0 | Main tuning lever |
-| `min_size` | Min. tips per clade | 3–15 | Prevents spurious clades |
-| `divergence_addition` | Weight on divergence score | 0.0–1.0 | 0 = ignore divergence |
-| `divergence_scale` | Divergence saturation | 2–10 | Larger = more resistant |
-| `bushiness_branch_scale` | Phylo decay rate | 2–10 | Larger = shorter memory |
-| `branch_length_scale` | Mutation weight saturation | 2–10 | Larger = less sensitive |
-| `proteins` | Protein targets | `["VP1"]` or `["VP1", "2C"]` | Virus-dependent |
+At minimum:
 
-## Config files
+- list viruses under `viruses:`
+- provide `tree_url` (if not using local trees)
+- set defaults (`defaults:`) for date range, proteins, and thresholds
 
-- **`config/suggestion_params.json`** — Hyperparameters (cutoff, divergence, size thresholds)
-- **`config/weights.json`** — Per-position mutation weights (epitope sites typically 2–3, others 1, default 0)
-- **`config/aliases.json`** — Clade naming scheme (e.g., `(2020, 1)` → `"A"`)
-- **`Snakefile`** — Workflow (fetches tree from Nextstrain, runs algorithm, outputs JSON)
+### 2) Run the workflow for everything
 
-## Adapting to other EV species
-
-Minimal changes needed per virus:
-
-```json
-{
-  "max_date": 2026.0,
-  "min_date": 2020.0,
-  "proteins": ["VP1"],           // EV-D68, EV-A71: VP1 only
-                                  // CVA16, CVA6: ["VP1", "3D"] (recomb. hotspot)
-  "cutoff": 1.0,                 // Tune per virus (0.8–1.4)
-  "bushiness_branch_scale": 4,
-  "branch_length_scale": 4,
-  "divergence_addition": 0.5,    // Adjust for EV evolution rate
-  "divergence_scale": 4,
-  "min_size": 5
-}
+```bash
+snakemake -c 1 all
 ```
 
-**Steps:**
+Outputs:
 
-1. Copy `config/` → `config_EVA71/` (or similar)
-2. Adjust `proteins` list and evolution-rate parameters
-3. Update `suggestion_params.json` with virus-specific cutoffs
-4. Retune `weights.json` if epitope sites differ from EV-D68
-5. Run parameter sweep on your tree to find optimal `cutoff` and `divergence_addition`
+- `auspice/suggested_{virus}.json` (viewable in Auspice)
+- `{virus}/results/optimal_scales.json`
+- `{virus}/results/new-clades.tsv` (+ optional sweep output)
 
-## Interpreting results
+### 3) View results in Auspice locally
 
-- **`suggested_tree.json`** — Tree with new clades + scoring attributes:
-  - `new-clade`: suggested clade name
-  - `score`: combined phylo + mutation score
-  - `bushiness`: phylogenetic signal (0–1)
-  - `branch_score`: mutation weight score (0–1)
-  - `div_score`: divergence contribution (0–1)
+```bash
+auspice view --datasetDir auspice
+```
 
-- **`*_all.tsv`** (parameter sweep output):
-  - `cutoff`, `divergence_addition`, `min_size`, etc. — parameter values
-  - `new_clade` — count of suggested clades
-  - `old_clade` — count of existing clades (baseline)
-  - `mean_score`, `max_score`, `score_std` — node scoring statistics
+Then open something like:
 
-## Workflow (Snakefile)
+```bash
+http://localhost:4000/suggested/ev-d68?branchLabel=new-clade&c=new-clade&d=tree&p=full&showBranchLabels=all
+```
 
-1. **Fetch** tree from Nextstrain URL (config)
-2. **Suggest** new clades using `add_new_clades.py`
-3. **Output** `auspice/suggested_{virus}.json` ready for visualization
+---
 
-Edit `Snakefile` to set `tree_url` and adjust virus names for your viruses.
+## What the workflow does (Snakefile)
 
-## Next steps
+For each `{virus}`:
 
-- [ ] Run parameter sweep on your EV-D68 tree
-- [ ] Plot parameter sensitivity (heatmap of cutoff vs. divergence_addition)
-- [ ] Validate against manually-curated clades
-- [ ] Adapt config for EV-A71, CVA16, etc.
-- [ ] Integrate output column into Nextclade pipeline
+1. **Fetch input tree + annotation** (unless local tree provided)
+   - Tries **Nextclade dataset**: `enpen/enterovirus/{virus}`
+   - Falls back to `curl {tree_url}`
+   - If only a tree is fetched, a **GFF3** is generated from `meta.genome_annotations` using `jq`
+
+2. **Ensure existing clade annotations exist**
+   - If the input tree has no `node_attrs[clade_key]`, assigns a dummy clade to all nodes.
+   - This keeps the algorithm happy because it expects an “old clade key” for hierarchy/backbone logic.
+
+3. **Create default inputs**
+   - `resources/weights.json` if missing (simple defaults)
+   - optional `resources/aliases_default.json` extracted from the tree (if you want a starting point)
+
+4. **Compute recommended scales** (`scripts/calculate_optimal_scales.py`)
+   - writes `{virus}/results/optimal_scales.json`
+   - used as defaults for sweep ranges / per-virus settings
+
+5. **Suggest new clades** (`scripts/add_new_clades.py`)
+   - writes `auspice/suggested_{virus}.json`
+   - writes `{virus}/results/new-clades.tsv`
+   - optionally runs a **parameter sweep** (`--plots True`) and writes a TSV of sweep results
+
+---
+
+## Core algorithm (summary)
+
+Implemented in `scripts/add_new_clades.py`.
+
+### Per-node quantities
+
+- **alive**: tip in `[min_date, max_date]` based on `node_attrs.num_date.value`
+- **ntips**: number of descendant tips
+- **bushiness_raw**: LBI-like score using exponential decay along branches  
+  (branch length is computed from nucleotide mutations, scaled by `bushiness_branch_scale`)
+- **bushiness**: normalized bushiness `raw/(raw + bushiness_scale)`
+- **branch_score**: normalized weighted AA score `aa_weight/(branch_length_scale + aa_weight)`
+- **div_score**: divergence contribution since last breakpoint:
+  `divergence_addition * delta_div/(delta_div + divergence_scale)`
+
+### Trigger rule (current implementation)
+
+A branch triggers a new clade if:
+
+- `score_total > cutoff` and `ntips > min_size`
+- plus a “one-daughter” check to avoid creating a clade when exactly one child would also trigger
+
+**Important implementation detail:** the script *adds* `div_score` directly into `node_attrs["score"]["value"]` before testing the cutoff.
+
+---
+
+## Key configuration concepts
+
+### `clade_key` (“old clade key”)
+
+This is the node attribute key containing **existing clade membership**, used to:
+
+- build the existing hierarchy (`full_{clade_key}`)
+- label the backbone (avoid placing new clades on branches leading to existing clade roots)
+
+For EV datasets this is usually something like:
+
+- `clade_membership`
+- or dataset-specific
+
+The workflow’s `ensure_clades` rule can assign a dummy clade if missing.
+
+### Proteins / genes
+
+The algorithm uses:
+
+- nucleotide mutations (`nuc`) for bushiness branch length
+- amino-acid mutations for branch weighting (`weights.json`)
+- divergence computed over `defaults.proteins` (if empty, it falls back to `nuc`)
+
+If a `genome_annotation.gff3` is present, the script can infer CDS names (useful if you don’t want to hardcode proteins).
+
+---
+
+## Parameter sweep (recommended for tuning)
+
+The Snakemake rule runs `add_new_clades.py` with sweep ranges from `config.yaml`:
+
+- `--cutoff-sweep`
+- `--div_add-sweep`
+- `--div_scale-sweep`
+- `--min_size-sweep`
+- `--bush_scale-sweep`
+- `--bls_range-sweep`
+
+Output: a TSV (same path as `--clades`) with one row per parameter set including:
+
+- counts of old/new clades
+- mean node stats (`score`, `bushiness`, `div`, `branch_score`)
+
+**Tip:** start with a small grid (e.g. 5×5 over `cutoff` and `divergence_addition`) before adding more axes.
+
+---
+
+## Outputs (what to look at)
+
+In `auspice/suggested_{virus}.json`:
+
+- `new-clade`: suggested clade name
+- continuous colorings:
+  - `score` (already includes `div_score` in current implementation)
+  - `div_score`
+  - `div_impact`
+  - `bushiness_raw`, `bushiness`
+  - `branch_score`
+
+In `{virus}/results/new-clades.tsv`:
+
+- a simple table listing old clades vs newly suggested clades (mainly for quick counts)
+
+---
+
+## Caveats (enterovirus-specific)
+
+- **Recombination** can break the “single tree = single history” assumption. Consider restricting mutation scoring/divergence to VP1 unless you have a clear reason to include additional proteins.
+- Sampling density strongly affects bushiness. Re-tune thresholds when sampling changes substantially.
+
+---
+
+## Useful commands
+
+Clean derived outputs:
+
+```bash
+snakemake clean -c 1
+```
+
+Export clade definitions to YAML (for downstream Nextclade / documentation):
+
+```bash
+snakemake extract_clade_ymls -c 1
+```
+
+---
 
 ## References
 
-- Original algorithm: [influenza-clade-nomenclature/clade-suggestion-algorithm](https://github.com/influenza-clade-nomenclature/clade-suggestion-algorithm)
+- Upstream inspiration: <https://github.com/influenza-clade-nomenclature/clade-suggestion-algorithm>
 - Nextstrain: <https://nextstrain.org>
 - Nextclade: <https://clades.nextstrain.org>
