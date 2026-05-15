@@ -542,13 +542,13 @@ if __name__=="__main__":
         count_new.add(clade_name)
     print("\nnumber of new clades:", len(count_new))
 
-    # count_old = sorted(list(count_old))
-    # count_new = sorted(list(count_new))
+    count_old = sorted(list(count_old))
+    count_new = sorted(list(count_new))
 
-    # count_old.extend([np.nan] * (len(count_new)-len(count_old)))
+    count_old.extend([np.nan] * (len(count_new)-len(count_old)))
 
-    # count = pd.DataFrame({'old_clade': list(count_old), 'new_clade': list(count_new)})
-    # count.to_csv(args.clades, index=False, header=True, sep='\t')
+    count = pd.DataFrame({'old_clade': list(count_old), 'new_clade': list(count_new)})
+    count.to_csv(args.clades, index=False, header=True, sep='\t')
 
     # export
     data['meta']['colorings'].append({'key':new_clade_key, 'type':'ordinal', 'title':new_clade_key})
@@ -645,4 +645,4 @@ if __name__=="__main__":
             # print(len(count_new), "new clades")
 
         final_df = pd.concat(all_dfs, ignore_index=True)
-        final_df.to_csv(str.replace(args.clades, ".tsv", "_all.tsv"), sep='\t', index=False)
+        final_df.to_csv(args.clades, sep='\t', index=False)
