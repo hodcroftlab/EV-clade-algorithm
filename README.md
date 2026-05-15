@@ -12,6 +12,11 @@ This repo adapts the influenza clade-suggestion approach to enteroviruses using 
 
 ---
 
+## Documentation
+
+- **How to run the workflow + outputs:** this README
+- **Algorithm details (formulas, scoring, interpretation):** [`docs/algorithm.md`](docs/algorithm.md)
+
 ## Repository layout (current)
 
 The repo is organized with one directory per virus:
