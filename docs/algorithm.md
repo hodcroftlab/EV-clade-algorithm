@@ -114,7 +114,7 @@ We compute a local branching index (LBI)-like measure on the tree.
 
 ### Recurrence
 
-For a node \( n \), bushiness is:
+For a node $n$, bushiness is:
 
 ```math
 \phi_n = \sum_{c \in children(n)} \left[(1 - e^{-l_c/d}) \cdot I(c\ \text{alive}) \;+\; \phi_c \, e^{-l_c/d}\right]
@@ -122,14 +122,14 @@ For a node \( n \), bushiness is:
 
 Where:
 
-- \( c \) are child nodes of \( n \)
-- \( l_c \) is the branch length leading to \( c \)
-- \( d \) is a distance scale (in code: you pass a `distance(c)` function; the scale is controlled by `bushiness_branch_scale`)
-- \( I(c\ \text{alive}) \) is an indicator (1 if alive, else 0)
+- $`c`$ are child nodes of `n`
+- $`l_c`$ is the branch length leading to child node `c`
+- $`d`$ is a distance scale (in code: you pass a `distance(c)` function; the scale is controlled by `bushiness_branch_scale`)
+- `I(c alive)` is an indicator function (1 if $`c`$ is "alive", else 0)
 
 **Terminal nodes** have:
 
-- \( \phi = 1 \) if alive else 0
+- $`\phi = 1`$ if alive, else $`0`$
 
 ### Branch length proxy (implementation)
 
@@ -152,7 +152,7 @@ Conceptually:
 B = \frac{\phi}{\phi + s_{\phi}}
 ```
 
-Where \( s_{\phi} \) is a scale derived from the tree, often an upper percentile (implementation uses the 80th percentile of internal-node bushiness among "alive" nodes).
+Where $s_{\phi}$ is a scale derived from the tree, often an upper percentile (implementation uses the 80th percentile of internal-node bushiness among "alive" nodes).
 
 This yields `bushiness` in `[0, 1)`.
 
@@ -171,7 +171,7 @@ For each non-nucleotide CDS key in `branch_attrs.mutations`:
 - look up per-position weights in `weights.json`
 - sum the weights across AA substitutions on that branch
 
-Let raw AA weight on the branch be \( w \). We normalize via saturation:
+Let raw AA weight on the branch be $w$. We normalize via saturation:
 
 ```math
 S = \frac{w}{w + s_w}
@@ -179,7 +179,7 @@ S = \frac{w}{w + s_w}
 
 Where:
 
-- \( s_w \) corresponds to `branch_length_scale` in config/code
+- $s_w$ corresponds to `branch_length_scale` in config/code
 - interpretation: how many "weight units" should constitute a "strong" branch
 
 This yields `branch_score` in `[0, 1)`.
@@ -200,8 +200,8 @@ Divergence since the last breakpoint is used to make new clades easier to trigge
 
 Let:
 
-- \( \Delta = div - div_{breakpoint} \) (divergence since last breakpoint)
-- \( s_d \) = `divergence_scale`
+- $\Delta = div - div_{breakpoint}$ (divergence since last breakpoint)
+- $s_d$ = `divergence_scale`
 
 The divergence contribution is:
 
@@ -211,7 +211,7 @@ D = a_d \cdot \frac{\Delta}{\Delta + s_d}
 
 Where:
 
-- \( a_d \) = `divergence_addition` (max contribution to total score)
+- $a_d$ = `divergence_addition` (max contribution to total score)
 
 So `div_score` ranges from `0` to `divergence_addition`.
 
