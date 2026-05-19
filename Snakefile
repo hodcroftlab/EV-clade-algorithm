@@ -273,10 +273,9 @@ rule calculate_optimal_scales:
         clade_key=lambda w: clade_key_arg(w.virus),
         show_recommendations = "True",
     log: 
-        "logs/optimal_scales.{virus}.log"
+        "{virus}/results/optimal_scales.{virus}.log"
     shell:
         """
-        mkdir -p logs
         python3 scripts/calculate_optimal_scales.py \
             --tree {input.tree} \
             {params.clade_key} \
@@ -310,7 +309,7 @@ rule suggest_new_clades:
         defaults = config["defaults"],
 
         ## params for the plots
-        plots = "True",  # "True" to generate plots
+        plots = "False",  # "True" to generate plots
         p_cutoff = config["sweep"]["cutoff"],
         p_div_add = config["sweep"]["divergence_addition"],
         p_min_size = config["sweep"]["min_size"],
