@@ -62,15 +62,43 @@ def label_backbone(tree):
     label_backbone_recursive(tree)
 
 def dealias(n, aliases, label):
-    if label in n["node_attrs"]:
-        levels = n["node_attrs"][label]["value"].split('.')
-        if levels[0]=='unassigned':
-            full_clade = '*'
+    """
+    Convert short clade names (e.g., 'C2.r') to full tuples using aliases.
+    Handles non-numeric suffixes (e.g., 'r' for recombinant).
+    """
+    if label not in n["node_attrs"]:
+        if "children" in n:
+            for c in n["children"]:
+                dealias(c, aliases, label)
+        return
+    
+    clade_str = n["node_attrs"][label]["value"]
+    
+    # Handle 'unassigned'
+    if clade_str == 'unassigned':
+        full_clade = '*'
+    else:
+        levels = clade_str.split('.')
+        base_name = levels[0]  # e.g., 'C2'
+        
+        if base_name in aliases:
+            # Start with the aliased tuple
+            full_clade = tuple(aliases[base_name])
+            
+            # Try to append numeric suffixes; skip non-numeric ones
+            for suffix in levels[1:]:
+                try:
+                    full_clade = tuple(list(full_clade) + [int(suffix)])
+                except ValueError:
+                    # Non-numeric suffix (e.g., 'r') — log it but skip
+                    print(f"⚠ Skipping non-numeric suffix '{suffix}' in clade '{clade_str}'")
         else:
-            if levels[0] not in aliases:
-                raise KeyError(f"Alias for '{levels[0]}' not found in aliases. Current aliases: {aliases.keys()}. Ensure that '{levels[0]}' is defined in the aliases dictionary.")
-            full_clade = tuple(list(aliases[levels[0]]) + [int(x) for x in levels[1:]])
-        n["node_attrs"][f"full_{label}"] = {"value":full_clade}
+            # Fallback if base name not in aliases
+            print(f"⚠ Clade '{base_name}' not found in aliases, using as-is")
+            full_clade = clade_str
+    
+    n["node_attrs"][f"full_{label}"] = {"value": full_clade}
+    
     if "children" in n:
         for c in n["children"]:
             dealias(c, aliases, label)
@@ -545,9 +573,10 @@ if __name__=="__main__":
     count_old = sorted(list(count_old))
     count_new = sorted(list(count_new))
 
-    count_old.extend([np.nan] * (len(count_new)-len(count_old)))
-
-    count = pd.DataFrame({'old_clade': list(count_old), 'new_clade': list(count_new)})
+    count = pd.DataFrame({
+        'old_clade': pd.Series(sorted(list(count_old))),
+        'new_clade': pd.Series(sorted(list(count_new)))
+    })
     count.to_csv(args.clades, index=False, header=True, sep='\t')
 
     # export
