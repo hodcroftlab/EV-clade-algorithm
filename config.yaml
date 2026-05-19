@@ -3,7 +3,7 @@
 
 # Global defaults
 defaults:
-  local_tree: true
+  local_tree: false
   max_date: 2026-12-31
   min_date: 2020-01-01
   date_range_type: "tip_date"
@@ -35,26 +35,26 @@ viruses:
   ev-a71:
     tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/enterovirus/A71/whole-genome"
     cutoff: 1.1
-    divergence_addition: 0.8
-    divergence_scale: 31
-    min_size: 40
+    divergence_addition: 0.9
+    divergence_scale: 32
+    min_size: 20
     bushiness_branch_scale: 13
-    branch_length_scale: 7.1
+    branch_length_scale: 8
     
   cva16:
     tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/coxsackievirus/A16/whole-genome"
-    cutoff: 1.0
-    divergence_addition: 1
-    divergence_scale: 13
-    min_size: 10
-    bushiness_branch_scale: 26
-    branch_length_scale: 14
+    cutoff: 1.1
+    divergence_addition: 0.5
+    divergence_scale: 5
+    min_size: 20
+    bushiness_branch_scale: 20
+    branch_length_scale: 8
     
   cva10:
     tree_url: "https://nextstrain.org/charon/getDataset?prefix=groups/hodcroftlab/coxsackievirus/A10/whole-genome"
     cutoff: 1.1
     divergence_addition: 0.5
-    min_size: 10
+    min_size: 20
     bushiness_branch_scale: 25
     # branch_length_scale: 10
     # divergence_scale: 10
